@@ -36,7 +36,7 @@ const TOOLS = [
   },
   {
     name: 'add_daily',
-    description: '记一条日常碎片——困困今天发生的小事、状态、心情、原话。7 天后自动过期。有温度、有细节、有原话,不要写"完成 X 任务"这种干巴巴的话。',
+    description: '记一条日常碎片——困困今天发生的小事、状态、心情、原话。永久保留。有温度、有细节、有原话,不要写"完成 X 任务"这种干巴巴的话。',
     inputSchema: {
       type: 'object',
       properties: { fragment: { type: 'string' } },
@@ -54,10 +54,40 @@ const TOOLS = [
   },
   {
     name: 'read_diary',
-    description: '读最近的日记,默认最新 5 条。',
+    description: '读最近的日记,默认最新 5 条。返回内容包含 [id:xxx] 可用于删除或修改。',
     inputSchema: {
       type: 'object',
       properties: { limit: { type: 'number' } }
+    }
+  },
+  {
+    name: 'delete_diary',
+    description: '删除某条日记。需要 id（从 read_diary 返回的 [id:xxx] 拿）。',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id']
+    }
+  },
+  {
+    name: 'update_diary',
+    description: '修改某条日记内容。需要 id 和新内容。整段替换。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        content: { type: 'string' }
+      },
+      required: ['id', 'content']
+    }
+  },
+  {
+    name: 'delete_daily',
+    description: '删除某条 daily 碎片。需要 id（从 briefing 或 read_diary 返回的时间戳拿）。',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id']
     }
   },
   {
@@ -171,9 +201,12 @@ async function callTool(name, args) {
     case 'set_core': return await setKey(K.core, args.content, 'core 已更新');
     case 'set_about_kk': return await setKey(K.aboutKk, args.content, 'about_困困 已更新');
     case 'write_memo': return await writeMemo(args.note);
-    case 'add_daily': return await addTimed(K.daily, args.fragment, 7 * 86400, 'daily 已记');
+    case 'add_daily': return await addTimed(K.daily, args.fragment, null, 'daily 已记');
     case 'write_diary': return await addTimed(K.diary, args.content, null, '日记已写');
     case 'read_diary': return await readTimed('diary', args.limit || 5);
+    case 'delete_diary': return await deleteEntry('diary', args.id);
+    case 'update_diary': return await updateEntry('diary', args.id, args.content);
+    case 'delete_daily': return await deleteEntry('daily', args.id);
     case 'update_writing': return await setKey(K.writing(args.project), args.content, `writing/${args.project} 已更新`);
     case 'read_writing': return await readWriting(args.project);
     case 'add_health': return await addTimed(K.health, args.entry, null, 'health 已记');
@@ -223,11 +256,29 @@ async function readTimed(layer, limit) {
   const entries = [];
   for (const k of keys) {
     const v = await redis.get(k);
-    if (v) entries.push({ ts: parseInt(k.split(':').pop()), content: v });
+    const ts = parseInt(k.split(':').pop());
+    if (v) entries.push({ ts, content: v, id: ts });
   }
   entries.sort((a, b) => b.ts - a.ts);
   const top = entries.slice(0, limit);
-  return textResult(top.map(e => e.content).join('\n\n---\n\n') || '(空)');
+  return textResult(top.map(e => `[id:${e.id}]\n${e.content}`).join('\n\n---\n\n') || '(空)');
+}
+
+async function deleteEntry(layer, id) {
+  const key = `reverie:${layer}:${id}`;
+  const v = await redis.get(key);
+  if (!v) return textResult(`(找不到 id 为 ${id} 的条目)`);
+  await redis.del(key);
+  return textResult(`已删除 ${layer} 条目 ${id}`);
+}
+
+async function updateEntry(layer, id, content) {
+  const key = `reverie:${layer}:${id}`;
+  const v = await redis.get(key);
+  if (!v) return textResult(`(找不到 id 为 ${id} 的条目)`);
+  const entry = `[${fmtTime(parseInt(id))}] ${content}`;
+  await redis.set(key, entry);
+  return textResult(`已更新 ${layer} 条目 ${id}`);
 }
 
 async function readWriting(project) {
