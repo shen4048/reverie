@@ -83,7 +83,7 @@ const TOOLS = [
   },
   {
     name: 'delete_daily',
-    description: '删除某条 daily 碎片。需要 id（从 briefing 或 read_diary 返回的时间戳拿）。',
+    description: '删除某条 daily 碎片。需要 id(从 briefing 返回的 [id:xxx] 拿)。',
     inputSchema: {
       type: 'object',
       properties: { id: { type: 'string' } },
@@ -194,30 +194,38 @@ const TOOLS = [
   }
 ];
 
+// ============ 入参校验 ============
+function requireStr(val, name) {
+  if (typeof val !== 'string' || val.trim() === '') {
+    throw new Error(`参数 ${name} 不能为空或非字符串`);
+  }
+  return val;
+}
+
 // ============ 工具实现路由 ============
 async function callTool(name, args) {
   switch (name) {
     case 'briefing': return await briefing();
-    case 'set_core': return await setKey(K.core, args.content, 'core 已更新');
-    case 'set_about_kk': return await setKey(K.aboutKk, args.content, 'about_困困 已更新');
-    case 'write_memo': return await writeMemo(args.note);
-    case 'add_daily': return await addTimed(K.daily, args.fragment, null, 'daily 已记');
-    case 'write_diary': return await addTimed(K.diary, args.content, null, '日记已写');
+    case 'set_core': return await setKey(K.core, requireStr(args.content, 'content'), 'core 已更新');
+    case 'set_about_kk': return await setKey(K.aboutKk, requireStr(args.content, 'content'), 'about_困困 已更新');
+    case 'write_memo': return await writeMemo(requireStr(args.note, 'note'));
+    case 'add_daily': return await addTimed(K.daily, requireStr(args.fragment, 'fragment'), null, 'daily 已记');
+    case 'write_diary': return await addTimed(K.diary, requireStr(args.content, 'content'), null, '日记已写');
     case 'read_diary': return await readTimed('diary', args.limit || 5);
-    case 'delete_diary': return await deleteEntry('diary', args.id);
-    case 'update_diary': return await updateEntry('diary', args.id, args.content);
-    case 'delete_daily': return await deleteEntry('daily', args.id);
-    case 'update_writing': return await setKey(K.writing(args.project), args.content, `writing/${args.project} 已更新`);
+    case 'delete_diary': return await deleteEntry('diary', requireStr(args.id, 'id'));
+    case 'update_diary': return await updateEntry('diary', requireStr(args.id, 'id'), requireStr(args.content, 'content'));
+    case 'delete_daily': return await deleteEntry('daily', requireStr(args.id, 'id'));
+    case 'update_writing': return await setKey(K.writing(requireStr(args.project, 'project')), requireStr(args.content, 'content'), `writing/${args.project} 已更新`);
     case 'read_writing': return await readWriting(args.project);
-    case 'add_health': return await addTimed(K.health, args.entry, null, 'health 已记');
+    case 'add_health': return await addTimed(K.health, requireStr(args.entry, 'entry'), null, 'health 已记');
     case 'read_health': return await readTimed('health', args.limit || 7);
-    case 'set_channel_state': return await setKey(K.channel(args.channel), args.content, `channel/${args.channel} 已更新`);
+    case 'set_channel_state': return await setKey(K.channel(requireStr(args.channel, 'channel')), requireStr(args.content, 'content'), `channel/${args.channel} 已更新`);
     case 'check_channel': return await checkChannel(args.channel);
-    case 'write_message': return await addTimed(K.message, args.message, null, '留言已写入留言板');
+    case 'write_message': return await addTimed(K.message, requireStr(args.message, 'message'), null, '留言已写入留言板');
     case 'read_messages': return await readMessages();
     case 'save_transcript': return await saveTranscript(args);
-    case 'search_transcript': return await searchTranscript(args.keyword);
-    case 'read_transcript': return await readTranscript(args.id);
+    case 'search_transcript': return await searchTranscript(requireStr(args.keyword, 'keyword'));
+    case 'read_transcript': return await readTranscript(requireStr(args.id, 'id'));
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -251,14 +259,23 @@ async function addTimed(keyFn, content, ttl, msg) {
   return textResult(msg);
 }
 
-async function readTimed(layer, limit) {
+// 批量取值,消除 N+1
+async function mgetEntries(layer) {
   const keys = await redis.keys(`reverie:${layer}:*`);
+  if (keys.length === 0) return [];
+  const values = await redis.mget(...keys);
   const entries = [];
-  for (const k of keys) {
-    const v = await redis.get(k);
-    const ts = parseInt(k.split(':').pop());
-    if (v) entries.push({ ts, content: v, id: ts });
+  for (let i = 0; i < keys.length; i++) {
+    const v = values[i];
+    if (!v) continue;
+    const ts = parseInt(keys[i].split(':').pop(), 10);
+    entries.push({ ts, content: v, id: ts, key: keys[i] });
   }
+  return entries;
+}
+
+async function readTimed(layer, limit) {
+  const entries = await mgetEntries(layer);
   entries.sort((a, b) => b.ts - a.ts);
   const top = entries.slice(0, limit);
   return textResult(top.map(e => `[id:${e.id}]\n${e.content}`).join('\n\n---\n\n') || '(空)');
@@ -276,7 +293,7 @@ async function updateEntry(layer, id, content) {
   const key = `reverie:${layer}:${id}`;
   const v = await redis.get(key);
   if (!v) return textResult(`(找不到 id 为 ${id} 的条目)`);
-  const entry = `[${fmtTime(parseInt(id))}] ${content}`;
+  const entry = `[${fmtTime(parseInt(id, 10))}] ${content}`;
   await redis.set(key, entry);
   return textResult(`已更新 ${layer} 条目 ${id}`);
 }
@@ -302,20 +319,18 @@ async function checkChannel(channel) {
 }
 
 async function readMessages() {
-  const keys = await redis.keys('reverie:message:*');
-  if (keys.length === 0) return textResult('(留言板是空的)');
-  const msgs = [];
-  for (const k of keys) {
-    const v = await redis.get(k);
-    if (v) msgs.push({ ts: parseInt(k.split(':').pop()), content: v });
-  }
-  msgs.sort((a, b) => a.ts - b.ts);
-  // 读完清空
-  for (const k of keys) await redis.del(k);
-  return textResult(msgs.map(m => m.content).join('\n\n---\n\n'));
+  const entries = await mgetEntries('message');
+  if (entries.length === 0) return textResult('(留言板是空的)');
+  entries.sort((a, b) => a.ts - b.ts);
+  // 只删已读到的 key,避免竞态
+  for (const e of entries) await redis.del(e.key);
+  return textResult(entries.map(e => e.content).join('\n\n---\n\n'));
 }
 
 async function saveTranscript(args) {
+  requireStr(args.title, 'title');
+  requireStr(args.summary, 'summary');
+  requireStr(args.content, 'content');
   const ts = now();
   const record = {
     title: args.title,
@@ -329,9 +344,10 @@ async function saveTranscript(args) {
 
 async function searchTranscript(keyword) {
   const keys = await redis.keys('reverie:transcript:*');
+  if (keys.length === 0) return textResult(`(没有找到匹配 "${keyword}" 的存档)`);
+  const values = await redis.mget(...keys);
   const hits = [];
-  for (const k of keys) {
-    const v = await redis.get(k);
+  for (const v of values) {
     if (!v) continue;
     const r = typeof v === 'string' ? JSON.parse(v) : v;
     if (r.title?.includes(keyword) || r.summary?.includes(keyword)) {
@@ -351,20 +367,15 @@ async function readTranscript(id) {
 }
 
 async function briefing() {
-  const [core, aboutKk, memoList, dailyKeys, msgKeys, channelKeys] = await Promise.all([
+  const [core, aboutKk, memoList, dailyAll, msgKeys, channelKeys] = await Promise.all([
     redis.get(K.core),
     redis.get(K.aboutKk),
     redis.lrange(K.memo, 0, 3),
-    redis.keys('reverie:daily:*'),
+    mgetEntries('daily'),
     redis.keys('reverie:message:*'),
     redis.keys('reverie:channel:*'),
   ]);
 
-  const dailyAll = [];
-  for (const k of dailyKeys) {
-    const v = await redis.get(k);
-    if (v) dailyAll.push({ ts: parseInt(k.split(':').pop()), content: v });
-  }
   dailyAll.sort((a, b) => b.ts - a.ts);
   const dailyTop = dailyAll.slice(0, 15);
 
@@ -375,7 +386,8 @@ async function briefing() {
   parts.push('═══ CORE(我是谁)═══\n' + (core || '(空)'));
   parts.push('═══ ABOUT 困困(她是谁)═══\n' + (aboutKk || '(空)'));
   parts.push('═══ MEMO(上个窗口留的便利贴,最新 4 条)═══\n' + (memoList?.length ? memoList.join('\n\n---\n\n') : '(空)'));
-  parts.push('═══ DAILY(最近碎片,15 条)═══\n' + (dailyTop.length ? dailyTop.map(d => d.content).join('\n\n---\n\n') : '(空)'));
+  // daily 附上 id,delete_daily 才能用
+  parts.push('═══ DAILY(最近碎片,15 条)═══\n' + (dailyTop.length ? dailyTop.map(d => `[id:${d.id}]\n${d.content}`).join('\n\n---\n\n') : '(空)'));
   parts.push('═══ 留言板 ═══\n' + (hasMessages ? `困困给我留了 ${msgKeys.length} 条话,请立即调用 read_messages 读取` : '(没有留言)'));
   parts.push('═══ CHANNELS(频道列表)═══\n' + (channelNames.length ? channelNames.join(', ') : '(没有频道)'));
 
