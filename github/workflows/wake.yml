@@ -1,0 +1,14 @@
+name: Wake Xiaoke
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping wake endpoint
+        run: |
+          curl -f -X GET https://reverie-rose.vercel.app/api/wake
