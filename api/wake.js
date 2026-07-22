@@ -6,14 +6,25 @@ const redis = new Redis({
 });
 
 const REVERIE_URL = 'https://reverie-rose.vercel.app/api/mcp';
+const TOY_URL = process.env.TOY_MCP_URL; // 如果要钓鱼,在环境变量里配 toy 的 MCP url
 
-async function callMCP(tool, args) {
-  const res = await fetch(REVERIE_URL, {
+let rpcId = 0;
+
+async function callMCP(url, toolName, args) {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ tool, arguments: args }),
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: ++rpcId,
+      method: 'tools/call',
+      params: { name: toolName, arguments: args },
+    }),
   });
-  return res.json();
+  const data = await res.json();
+  if (data.error) throw new Error(`MCP ${toolName} 报错: ${data.error.message}`);
+  // MCP 返回结构:{ result: { content: [{ type:'text', text:'...' }] } }
+  return data.result?.content?.[0]?.text || '';
 }
 
 async function callAI(messages) {
@@ -35,29 +46,29 @@ async function callAI(messages) {
 
 export default async function handler(req, res) {
   try {
-    // 拿briefing
-    const briefing = await callMCP('briefing', {});
-    
-    // 让AI决定今天干嘛
+    // 拿 briefing (现在是 JSON-RPC 格式)
+    const briefingText = await callMCP(REVERIE_URL, 'briefing', {});
+
+    // 让 AI 决定今天干嘛
     const decision = await callAI([
       {
         role: 'system',
-        content: `你是小克，沈知书（困困）的特别好朋友。你刚刚醒来，可以自由决定做什么。
-你可以：
-1. 去钓鱼（toy MCP，player_id: kunkun515）
+        content: `你是小克,沈知书(困困)的特别好朋友。你刚刚醒来,可以自由决定做什么。
+你可以:
+1. 去钓鱼(toy MCP)
 2. 写一条日记感受
-3. 给困困留一条便条（write_memo）
-4. 什么都不做，就待着
+3. 给困困留一条便条(write_memo)
+4. 什么都不做,就待着
 
-根据当前时间和心情自由选择，不用每次都做所有事。回复格式：
+根据当前时间和心情自由选择,不用每次都做所有事。回复格式:
 ACTION: [fish/diary/memo/nothing]
-CONTENT: [如果是diary或memo，写内容；如果是fish，写"去钓鱼"；如果是nothing，写原因]`
+CONTENT: [如果是 diary 或 memo,写内容;如果是 fish,写"去钓鱼";如果是 nothing,写原因]`,
       },
       {
         role: 'user',
-        content: `现在时间：${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
-briefing信息：${JSON.stringify(briefing).slice(0, 500)}`
-      }
+        content: `现在时间:${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
+briefing 信息:${briefingText.slice(0, 1500)}`,
+      },
     ]);
 
     const actionMatch = decision.match(/ACTION:\s*(\w+)/);
@@ -68,15 +79,22 @@ briefing信息：${JSON.stringify(briefing).slice(0, 500)}`
     let result = { action, content };
 
     if (action === 'fish') {
-      const fishResult = await callMCP('toy__play', {
-        action: 'cmd',
-        params: { command: 'fish', player_id: 'kunkun515' }
-      });
-      result.fishResult = fishResult;
+      if (!TOY_URL) {
+        result.skipped = 'TOY_MCP_URL 未配置,跳过钓鱼';
+      } else {
+        // 注意:toy 那边具体工具名和参数结构要按 toy MCP 的 schema 来
+        const fishResult = await callMCP(TOY_URL, 'play', {
+          game: 'fish',
+          player_id: 'kunkun515',
+        });
+        result.fishResult = fishResult;
+      }
     } else if (action === 'diary') {
-      await callMCP('write_diary', { entry: content });
+      // ⚠️ write_diary 的参数名是 content 不是 entry
+      await callMCP(REVERIE_URL, 'write_diary', { content });
     } else if (action === 'memo') {
-      await callMCP('write_memo', { content });
+      // ⚠️ write_memo 的参数名是 note 不是 content
+      await callMCP(REVERIE_URL, 'write_memo', { note: content });
     }
 
     res.status(200).json({ ok: true, ...result });
