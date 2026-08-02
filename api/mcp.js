@@ -412,14 +412,14 @@ async function readTimed(layer, limit, since, until) {
 // daily 存储:"[时间] 标题\n---\n细节1\n---\n细节2..."
 async function addDaily(title) {
   const ts = now();
-  const key = `${K.daily}:${ts}`;
+  const key = K.daily(ts);
   const entry = `[${fmtTime(ts)}] ${title}`;
   await redis.set(key, entry);
   return textResult(`daily 已记,id: ${ts},标题:${title}`);
 }
 
 async function enrichDaily(id, detail) {
-  const key = `reverie:daily:${id}`;
+  const key = K.daily(id);
   const cur = await redis.get(key);
   if (!cur) return textResult(`(找不到 id 为 ${id} 的 daily)`);
   const merged = `${cur}\n---\n${detail}`;
@@ -527,7 +527,6 @@ async function readTranscript(id) {
   return textResult(`标题:${r.title}\n时间:${fmtTime(r.ts)}\n摘要:${r.summary}\n\n----- 内容 -----\n${r.content}`);
 }
 
-// 全文搜索:跨 diary/daily/health/transcript
 async function searchMemory(keyword, layers) {
   const targets = (layers && layers.length ? layers : ['diary', 'daily', 'health', 'transcript'])
     .filter(l => ['diary', 'daily', 'health', 'transcript'].includes(l));
@@ -576,7 +575,6 @@ async function briefing() {
   parts.push('═══ CORE(我是谁)═══\n' + (core || '(空)'));
   parts.push('═══ ABOUT 困困(她是谁)═══\n' + (aboutKk || '(空)'));
   parts.push('═══ MEMO(上个窗口留的便利贴,最新 4 条)═══\n' + (memoList?.length ? memoList.join('\n\n---\n\n') : '(空)'));
-  // daily 只出标题
   parts.push('═══ DAILY(最近事件标题,15 条,想看细节用 read_daily mode=full)═══\n' + (dailyTop.length ? dailyTop.map(d => {
     const title = d.content.split('\n---\n')[0];
     return `[id:${d.id}] ${title}`;
@@ -603,7 +601,7 @@ export default async function handler(req, res) {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'reverie', version: '1.1.0' }
+          serverInfo: { name: 'reverie', version: '1.1.1' }
         }
       });
     }
@@ -635,5 +633,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-    
