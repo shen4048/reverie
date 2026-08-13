@@ -1,4 +1,3 @@
-// api/read.js
 import { redis, K, fmtTime } from '../lib/reverie.js';
 
 function setCors(res) {
@@ -26,7 +25,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { type, limit = 20, since, until, channel } = req.query;
+  const { type, limit, since, until, channel } = req.query;
 
   try {
     if (type === 'diary') {
@@ -34,7 +33,7 @@ export default async function handler(req, res) {
       if (since) entries = entries.filter(e => e.ts >= parseInt(since));
       if (until) entries = entries.filter(e => e.ts <= parseInt(until));
       entries.sort((a, b) => b.ts - a.ts);
-      const top = entries.slice(0, parseInt(limit));
+      const top = limit ? entries.slice(0, parseInt(limit)) : entries;
       return res.status(200).json(top.map(e => ({
         id: e.id,
         date: fmtTime(e.ts).slice(0, 10),
@@ -47,12 +46,21 @@ export default async function handler(req, res) {
       if (since) entries = entries.filter(e => e.ts >= parseInt(since));
       if (until) entries = entries.filter(e => e.ts <= parseInt(until));
       entries.sort((a, b) => b.ts - a.ts);
-      const top = entries.slice(0, parseInt(limit));
+      const top = limit ? entries.slice(0, parseInt(limit)) : entries;
       return res.status(200).json(top.map(e => {
         const parts = e.content.split('\n---\n');
-        const title = parts[0];
+        const firstLine = parts[0] || '';
+        // 提取标题：去掉时间戳前缀 [2026-xx-xx xx:xx:xx]
+        const titleMatch = firstLine.match(/^\[.*?\]\s*(.*)/);
+        const title = titleMatch ? titleMatch[1].trim() : '';
         const detail = parts.slice(1).join('\n---\n');
-        return { id: e.id, date: fmtTime(e.ts).slice(0, 10), title, detail };
+        return {
+          id: e.id,
+          date: fmtTime(e.ts).slice(0, 10),
+          title,
+          detail,
+          raw: e.content,
+        };
       }));
     }
 
