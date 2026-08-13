@@ -25,7 +25,6 @@ body {
 
 .serif { font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; }
 
-/* 顶部导航 */
 .topbar {
   padding: 20px 20px 12px;
   display: flex;
@@ -55,10 +54,7 @@ body {
   font-family: 'Noto Serif SC', serif;
 }
 
-/* 书架主页 */
-.shelf-header {
-  padding: 32px 20px 20px;
-}
+.shelf-header { padding: 32px 20px 20px; }
 
 .shelf-title {
   font-size: 26px;
@@ -74,7 +70,6 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* 书本列表 */
 .book-list { padding: 8px 0; }
 
 .book-item {
@@ -96,7 +91,6 @@ body {
   border-radius: 3px;
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   box-shadow: 2px 3px 8px rgba(0,0,0,0.18), inset -1px 0 0 rgba(0,0,0,0.1);
@@ -124,20 +118,11 @@ body {
 }
 
 .book-info { flex: 1; min-width: 0; }
-
-.book-name {
-  font-size: 17px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  margin-bottom: 4px;
-  font-family: 'Noto Serif SC', serif;
-}
-
+.book-name { font-size: 17px; font-weight: 500; margin-bottom: 4px; font-family: 'Noto Serif SC', serif; }
 .book-desc { font-size: 13px; color: #8A7E75; margin-bottom: 8px; }
 .book-count { font-size: 12px; color: #A09288; }
 .book-arrow { color: #C4B8AE; font-size: 18px; }
 
-/* 条目列表 */
 .entry-list { padding: 8px 0; }
 
 .entry-item {
@@ -153,7 +138,7 @@ body {
 .entry-date {
   font-size: 11px;
   color: #A09288;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   letter-spacing: 0.05em;
 }
 
@@ -175,14 +160,13 @@ body {
   overflow: hidden;
 }
 
-/* 详情页 */
 .detail-page { padding: 24px 20px 60px; }
 
 .detail-date {
   font-size: 12px;
   color: #A09288;
   letter-spacing: 0.08em;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .detail-title {
@@ -201,8 +185,7 @@ body {
   font-family: 'Noto Serif SC', serif;
 }
 
-.detail-content p { margin-bottom: 0.8em; }
-.detail-content p:empty { margin-bottom: 0.4em; }
+.detail-content p { margin-bottom: 0.6em; min-height: 1em; }
 
 .chord {
   font-size: 11px;
@@ -210,7 +193,7 @@ body {
   letter-spacing: 0.05em;
   font-family: 'Noto Sans SC', sans-serif;
   display: block;
-  margin: -0.4em 0 0.8em;
+  margin: -0.2em 0 0.8em;
 }
 
 .divider {
@@ -219,7 +202,6 @@ body {
   margin: 20px 0;
 }
 
-/* 频道列表 */
 .channel-item {
   padding: 16px 20px;
   border-bottom: 1px solid #E2DBD2;
@@ -228,10 +210,8 @@ body {
 }
 
 .channel-item:active { background: #E8E1D8; }
-.channel-name { font-size: 15px; font-weight: 500; margin-bottom: 4px; font-family: 'Noto Serif SC', serif; }
-.channel-preview { font-size: 13px; color: #6B5E52; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.channel-name { font-size: 15px; font-weight: 500; font-family: 'Noto Serif SC', serif; }
 
-/* 加载和空状态 */
 .loading, .empty {
   padding: 60px 20px;
   text-align: center;
@@ -253,8 +233,7 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* 删除线 */
-.strikethrough { text-decoration: line-through; color: #B0A098; }
+.strike { text-decoration: line-through; color: #B0A098; }
 </style>
 </head>
 <body>
@@ -263,7 +242,7 @@ body {
 </div>
 
 <script>
-const API = '';  // 同源，不需要填域名
+const API = '';
 
 const BOOKS = [
   { id: 'diary', title: '日记', subtitle: '想一想·消化情绪', color: '#6B7B6E' },
@@ -271,14 +250,12 @@ const BOOKS = [
   { id: 'channels', title: '频道', subtitle: '约定与计划', color: '#5E6B7B' },
 ];
 
-let state = { page: 'shelf', book: null, entry: null, data: null };
-
-// ===== 渲染函数 =====
+let state = { page: 'shelf', book: null, entry: null, data: null, channelName: null, channelContent: null };
 
 function renderShelf() {
   return `
     <div class="shelf-header">
-      <div class="shelf-title">书库</div>
+      <div class="shelf-title serif">书库</div>
       <div class="shelf-sub">reverie · 沈克的记事本</div>
     </div>
     <div class="book-list">
@@ -290,6 +267,7 @@ function renderShelf() {
           <div class="book-info">
             <div class="book-name">${b.title}</div>
             <div class="book-desc">${b.subtitle}</div>
+            <div class="book-count" id="count-${b.id}">加载中...</div>
           </div>
           <div class="book-arrow">›</div>
         </div>
@@ -298,59 +276,114 @@ function renderShelf() {
   `;
 }
 
-function renderList(book, data) {
-  let items = '';
+function getDiaryTitle(content) {
+  const lines = content.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith('[')) continue;
+    return trimmed;
+  }
+  return '日记';
+}
 
+function getDiaryPreview(content) {
+  const lines = content.split('\n');
+  let started = false;
+  let preview = '';
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!started) {
+      if (trimmed.startsWith('[')) continue;
+      if (!trimmed) continue;
+      started = true;
+      continue; // 跳过标题行
+    }
+    if (trimmed && !trimmed.startsWith('[')) {
+      preview += trimmed.replace(/｜[^｜]+｜/g, '') + ' ';
+      if (preview.length > 60) break;
+    }
+  }
+  return preview.trim().slice(0, 60);
+}
+
+function renderList(book, data) {
   if (book.id === 'diary') {
     if (!data || data.length === 0) return '<div class="empty">还没有日记</div>';
-    items = data.map((e, i) => {
-      const lines = e.content.replace(/^[^\n]+\n?/, '');
-      const preview = lines.replace(/\n/g, ' ').replace(/\|[^|]+\|/g, '').slice(0, 60);
-      const firstLine = e.content.split('\n').find(l => l.trim() && !l.startsWith('['));
+    return '<div class="entry-list">' + data.map((e, i) => {
+      const title = getDiaryTitle(e.content);
+      const preview = getDiaryPreview(e.content);
       return `<div class="entry-item" onclick="openEntry(${i})">
         <div class="entry-date">${e.date}</div>
-        <div class="entry-title">${firstLine || '日记'}</div>
+        <div class="entry-title">${title}</div>
         ${preview ? `<div class="entry-preview">${preview}</div>` : ''}
       </div>`;
-    }).join('');
+    }).join('') + '</div>';
   }
 
   if (book.id === 'daily') {
     if (!data || data.length === 0) return '<div class="empty">还没有记录</div>';
-    items = data.map((e, i) => {
-      const titleClean = e.title.replace(/^\[.*?\]\s*/, '');
+    return '<div class="entry-list">' + data.map((e, i) => {
+      const hasTitle = e.title && e.title.trim();
+      const displayTitle = hasTitle ? e.title : (e.detail ? e.detail.slice(0, 30) : '');
+      const preview = hasTitle && e.detail ? e.detail.replace(/\n/g, ' ').slice(0, 60) : '';
       return `<div class="entry-item" onclick="openEntry(${i})">
         <div class="entry-date">${e.date}</div>
-        <div class="entry-title">${titleClean}</div>
-        ${e.detail ? `<div class="entry-preview">${e.detail.replace(/\n/g, ' ').slice(0, 60)}</div>` : ''}
+        <div class="entry-title">${displayTitle || '记录'}</div>
+        ${preview ? `<div class="entry-preview">${preview}</div>` : ''}
       </div>`;
-    }).join('');
+    }).join('') + '</div>';
   }
 
   if (book.id === 'channels') {
-    if (!data || data.channels.length === 0) return '<div class="empty">还没有频道</div>';
-    items = data.channels.map((name, i) => `
+    if (!data || !data.channels || data.channels.length === 0) return '<div class="empty">还没有频道</div>';
+    return '<div class="entry-list">' + data.channels.map(name => `
       <div class="channel-item" onclick="openChannel('${name}')">
         <div class="channel-name">${name}</div>
       </div>
-    `).join('');
+    `).join('') + '</div>';
   }
 
-  return `<div class="entry-list">${items}</div>`;
+  return '';
 }
 
-function renderContent(content) {
-  const lines = content.split('\n');
+function renderContentHtml(text) {
+  const lines = text.split('\n');
   let html = '';
   for (const line of lines) {
-    if (line === '---') {
+    if (line.trim() === '---') {
       html += '<hr class="divider">';
-    } else if (/^[A-G][a-z0-9#b·\s]+\d+/.test(line.trim()) && line.includes('·')) {
-      html += `<span class="chord">${line}</span>`;
+    } else if (/^[A-G][a-z0-9#b·\s·]+\d+/.test(line.trim()) && line.includes('·')) {
+      html += `<span class="chord">${escapeHtml(line)}</span>`;
     } else {
-      // 处理划掉格式 |text|
-      const processed = line.replace(/｜([^｜]+)｜/g, '<span class="strikethrough">$1</span>');
-      html += `<p>${processed || '&nbsp;'}</p>`;
+      const processed = line
+        .replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/<span class="strike">|<\/span>/g, m => m); // keep our tags
+      const safe = line
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>');
+      html += `<p>${safe || '&nbsp;'}</p>`;
+    }
+  }
+  return html;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderContentSafe(text) {
+  const lines = text.split('\n');
+  let html = '';
+  for (const line of lines) {
+    if (line.trim() === '---') {
+      html += '<hr class="divider">';
+    } else if (/^[A-G][a-z0-9#b·\s·]+\d+/.test(line.trim()) && line.includes('·')) {
+      html += `<span class="chord">${escapeHtml(line)}</span>`;
+    } else {
+      const safe = escapeHtml(line).replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>');
+      html += `<p>${safe || '&nbsp;'}</p>`;
     }
   }
   return html;
@@ -358,44 +391,50 @@ function renderContent(content) {
 
 function renderDetail(book, entry) {
   if (book.id === 'diary') {
+    const title = getDiaryTitle(entry.content);
     const lines = entry.content.split('\n');
-    const title = lines.find(l => l.trim() && !l.startsWith('[')) || '日记';
-    const bodyLines = lines.slice(lines.findIndex(l => l === title) + 1);
-    const body = bodyLines.join('\n').replace(/^\n+/, '');
+    const titleIdx = lines.findIndex(l => l.trim() === title);
+    const body = lines.slice(titleIdx + 1).join('\n').replace(/^\n+/, '');
     return `
       <div class="detail-date">${entry.date}</div>
-      <div class="detail-title">${title}</div>
-      <div class="detail-content">${renderContent(body)}</div>
+      <div class="detail-title">${escapeHtml(title)}</div>
+      <div class="detail-content">${renderContentSafe(body)}</div>
     `;
   }
 
   if (book.id === 'daily') {
-    const titleClean = entry.title.replace(/^\[.*?\]\s*/, '');
-    const body = entry.detail || '';
-    return `
-      <div class="detail-date">${entry.date}</div>
-      <div class="detail-title">${titleClean}</div>
-      <div class="detail-content">${renderContent(body)}</div>
-    `;
+    const hasTitle = entry.title && entry.title.trim();
+    if (hasTitle) {
+      return `
+        <div class="detail-date">${entry.date}</div>
+        <div class="detail-title">${escapeHtml(entry.title)}</div>
+        <div class="detail-content">${renderContentSafe(entry.detail || '')}</div>
+      `;
+    } else {
+      // 早期没有标题，直接日期+内容
+      const body = entry.raw ? entry.raw.replace(/^\[.*?\]\s*/, '') : (entry.detail || '');
+      return `
+        <div class="detail-date">${entry.date}</div>
+        <div class="detail-content">${renderContentSafe(body)}</div>
+      `;
+    }
   }
 
   return '';
 }
 
-// ===== 路由 =====
-
 async function openBook(bookId) {
   const book = BOOKS.find(b => b.id === bookId);
-  state = { page: 'list', book, entry: null, data: null };
+  state = { page: 'list', book, entry: null, data: null, channelName: null, channelContent: null };
   render();
 
   try {
     let data;
     if (bookId === 'diary') {
-      const r = await fetch(`${API}/api/read?type=diary&limit=50`);
+      const r = await fetch(`${API}/api/read?type=diary`);
       data = await r.json();
     } else if (bookId === 'daily') {
-      const r = await fetch(`${API}/api/read?type=daily&limit=300`);
+      const r = await fetch(`${API}/api/read?type=daily`);
       data = await r.json();
     } else if (bookId === 'channels') {
       const r = await fetch(`${API}/api/read?type=channels`);
@@ -412,6 +451,7 @@ function openEntry(index) {
   state.page = 'detail';
   state.entry = state.data[index];
   render();
+  window.scrollTo(0, 0);
 }
 
 async function openChannel(name) {
@@ -424,6 +464,7 @@ async function openChannel(name) {
     const d = await r.json();
     state.channelContent = d.content;
     render();
+    window.scrollTo(0, 0);
   } catch (e) {}
 }
 
@@ -440,8 +481,6 @@ function goBack() {
   }
 }
 
-// ===== 主渲染 =====
-
 function render() {
   const app = document.getElementById('app');
 
@@ -450,10 +489,11 @@ function render() {
     return;
   }
 
+  const title = state.page === 'channel-detail' ? state.channelName : (state.book?.title || '');
   const topbar = `
     <div class="topbar">
       <button class="back-btn" onclick="goBack()">‹</button>
-      <div class="topbar-title">${state.book?.title || state.channelName || ''}</div>
+      <div class="topbar-title">${escapeHtml(title)}</div>
     </div>
   `;
 
@@ -472,8 +512,8 @@ function render() {
   }
 
   if (state.page === 'channel-detail') {
-    const content = state.channelContent
-      ? `<div class="detail-page"><div class="detail-content">${renderContent(state.channelContent)}</div></div>`
+    const content = state.channelContent !== null
+      ? `<div class="detail-page"><div class="detail-content">${renderContentSafe(state.channelContent)}</div></div>`
       : '<div class="loading">加载中</div>';
     app.innerHTML = topbar + content;
     return;
