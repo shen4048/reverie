@@ -395,7 +395,7 @@ async function openBook(bookId) {
       const r = await fetch(`${API}/api/read?type=diary&limit=50`);
       data = await r.json();
     } else if (bookId === 'daily') {
-      const r = await fetch(`${API}/api/read?type=daily&limit=50`);
+      const r = await fetch(`${API}/api/read?type=daily&limit=300`);
       data = await r.json();
     } else if (bookId === 'channels') {
       const r = await fetch(`${API}/api/read?type=channels`);
