@@ -23,8 +23,7 @@ body {
   background: #F0EBE3;
 }
 
-.serif { font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif; }
-
+/* 顶部导航 */
 .topbar {
   padding: 20px 20px 12px;
   display: flex;
@@ -45,6 +44,7 @@ body {
   font-size: 24px;
   padding: 0;
   line-height: 1;
+  flex-shrink: 0;
 }
 
 .topbar-title {
@@ -54,6 +54,7 @@ body {
   font-family: 'Noto Serif SC', serif;
 }
 
+/* 书架 */
 .shelf-header { padding: 32px 20px 20px; }
 
 .shelf-title {
@@ -67,12 +68,12 @@ body {
   font-size: 13px;
   color: #8A7E75;
   margin-top: 4px;
-  letter-spacing: 0.05em;
 }
 
-.book-list { padding: 8px 0; }
+/* 通用列表项 */
+.list { padding: 8px 0; }
 
-.book-item {
+.list-item {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -83,8 +84,9 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-.book-item:active { background: #E8E1D8; }
+.list-item:active { background: #E8E1D8; }
 
+/* 书封面 */
 .book-cover {
   width: 64px;
   height: 82px;
@@ -119,54 +121,49 @@ body {
 
 .book-info { flex: 1; min-width: 0; }
 .book-name { font-size: 17px; font-weight: 500; margin-bottom: 4px; font-family: 'Noto Serif SC', serif; }
-.book-desc { font-size: 13px; color: #8A7E75; margin-bottom: 8px; }
-.book-count { font-size: 12px; color: #A09288; }
-.book-arrow { color: #C4B8AE; font-size: 18px; }
+.book-desc { font-size: 13px; color: #8A7E75; }
 
-.entry-list { padding: 8px 0; }
-
-.entry-item {
-  padding: 16px 20px;
-  border-bottom: 1px solid #E2DBD2;
-  cursor: pointer;
-  transition: background 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.entry-item:active { background: #E8E1D8; }
-
-.entry-date {
-  font-size: 11px;
-  color: #A09288;
-  margin-bottom: 4px;
-  letter-spacing: 0.05em;
-}
-
-.entry-title {
-  font-size: 15px;
-  font-weight: 500;
-  margin-bottom: 4px;
-  line-height: 1.5;
+/* 日期行 */
+.date-row {
+  font-size: 17px;
   font-family: 'Noto Serif SC', serif;
+  font-weight: 500;
+  flex: 1;
 }
 
-.entry-preview {
-  font-size: 13px;
-  color: #6B5E52;
-  line-height: 1.6;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.date-sub {
+  font-size: 12px;
+  color: #A09288;
+  margin-top: 3px;
 }
 
+/* 标题行 */
+.entry-title-row {
+  font-size: 15px;
+  font-family: 'Noto Serif SC', serif;
+  font-weight: 500;
+  flex: 1;
+  line-height: 1.5;
+}
+
+.entry-title-no {
+  font-size: 15px;
+  color: #B0A098;
+  font-style: italic;
+  flex: 1;
+}
+
+/* 箭头 */
+.arrow { color: #C4B8AE; font-size: 18px; flex-shrink: 0; }
+
+/* 详情页 */
 .detail-page { padding: 24px 20px 60px; }
 
 .detail-date {
   font-size: 12px;
   color: #A09288;
   letter-spacing: 0.08em;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .detail-title {
@@ -174,7 +171,6 @@ body {
   font-weight: 600;
   line-height: 1.4;
   margin-bottom: 24px;
-  letter-spacing: 0.03em;
   font-family: 'Noto Serif SC', serif;
 }
 
@@ -185,12 +181,11 @@ body {
   font-family: 'Noto Serif SC', serif;
 }
 
-.detail-content p { margin-bottom: 0.6em; min-height: 1em; }
+.detail-content p { margin-bottom: 0.5em; min-height: 1em; }
 
 .chord {
   font-size: 11px;
   color: #A09288;
-  letter-spacing: 0.05em;
   font-family: 'Noto Sans SC', sans-serif;
   display: block;
   margin: -0.2em 0 0.8em;
@@ -202,16 +197,9 @@ body {
   margin: 20px 0;
 }
 
-.channel-item {
-  padding: 16px 20px;
-  border-bottom: 1px solid #E2DBD2;
-  cursor: pointer;
-  transition: background 0.15s;
-}
+.strike { text-decoration: line-through; color: #B0A098; }
 
-.channel-item:active { background: #E8E1D8; }
-.channel-name { font-size: 15px; font-weight: 500; font-family: 'Noto Serif SC', serif; }
-
+/* 加载/空 */
 .loading, .empty {
   padding: 60px 20px;
   text-align: center;
@@ -232,8 +220,6 @@ body {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-
-.strike { text-decoration: line-through; color: #B0A098; }
 </style>
 </head>
 <body>
@@ -245,217 +231,208 @@ body {
 const API = '';
 
 const BOOKS = [
-  { id: 'diary', title: '日记', subtitle: '想一想·消化情绪', color: '#6B7B6E' },
-  { id: 'daily', title: '流水账', subtitle: '我们聊了什么', color: '#7B6B5E' },
-  { id: 'channels', title: '频道', subtitle: '约定与计划', color: '#5E6B7B' },
+  { id: 'diary',    title: '日记',   subtitle: '想一想·消化情绪', color: '#6B7B6E' },
+  { id: 'daily',   title: '流水账', subtitle: '我们聊了什么',     color: '#7B6B5E' },
+  { id: 'channels',title: '频道',   subtitle: '约定与计划',       color: '#5E6B7B' },
 ];
 
-let state = { page: 'shelf', book: null, entry: null, data: null, channelName: null, channelContent: null };
+// 全量缓存
+const cache = {};
+
+let state = {
+  page: 'shelf',   // shelf | date-list | day-entries | detail | channel-list | channel-detail
+  book: null,
+  selectedDate: null,
+  selectedEntry: null,
+  channelName: null,
+  channelContent: null,
+};
+
+// ===== 工具 =====
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;');
+}
+
+function renderContentSafe(text) {
+  const lines = (text || '').split('\n');
+  let html = '';
+  for (const line of lines) {
+    if (line.trim() === '---') {
+      html += '<hr class="divider">';
+    } else if (/^[A-G][a-z0-9#b·\s·]+\d+/.test(line.trim()) && line.includes('·')) {
+      html += `<span class="chord">${esc(line)}</span>`;
+    } else {
+      const safe = esc(line).replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>');
+      html += `<p>${safe || '&nbsp;'}</p>`;
+    }
+  }
+  return html;
+}
+
+// 从daily条目拿标题
+function getTitle(entry) {
+  return (entry.title || '').trim();
+}
+
+// 按日期分组
+function groupByDate(entries) {
+  const map = {};
+  for (const e of entries) {
+    if (!map[e.date]) map[e.date] = [];
+    map[e.date].push(e);
+  }
+  // 返回日期从新到旧
+  return Object.keys(map).sort((a,b) => b.localeCompare(a)).map(d => ({ date: d, entries: map[d] }));
+}
+
+// ===== 渲染 =====
 
 function renderShelf() {
   return `
     <div class="shelf-header">
-      <div class="shelf-title serif">书库</div>
+      <div class="shelf-title">书库</div>
       <div class="shelf-sub">reverie · 沈克的记事本</div>
     </div>
-    <div class="book-list">
+    <div class="list">
       ${BOOKS.map(b => `
-        <div class="book-item" onclick="openBook('${b.id}')">
+        <div class="list-item" onclick="openBook('${b.id}')">
           <div class="book-cover" style="background:${b.color}">
             <div class="book-cover-title">${b.title}</div>
           </div>
           <div class="book-info">
             <div class="book-name">${b.title}</div>
             <div class="book-desc">${b.subtitle}</div>
-            <div class="book-count" id="count-${b.id}">加载中...</div>
           </div>
-          <div class="book-arrow">›</div>
+          <div class="arrow">›</div>
         </div>
       `).join('')}
     </div>
   `;
 }
 
-function getDiaryTitle(content) {
-  const lines = content.split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith('[')) continue;
-    return trimmed;
-  }
-  return '日记';
-}
-
-function getDiaryPreview(content) {
-  const lines = content.split('\n');
-  let started = false;
-  let preview = '';
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!started) {
-      if (trimmed.startsWith('[')) continue;
-      if (!trimmed) continue;
-      started = true;
-      continue; // 跳过标题行
-    }
-    if (trimmed && !trimmed.startsWith('[')) {
-      preview += trimmed.replace(/｜[^｜]+｜/g, '') + ' ';
-      if (preview.length > 60) break;
-    }
-  }
-  return preview.trim().slice(0, 60);
-}
-
-function renderList(book, data) {
-  if (book.id === 'diary') {
-    if (!data || data.length === 0) return '<div class="empty">还没有日记</div>';
-    return '<div class="entry-list">' + data.map((e, i) => {
-      const title = getDiaryTitle(e.content);
-      const preview = getDiaryPreview(e.content);
-      return `<div class="entry-item" onclick="openEntry(${i})">
-        <div class="entry-date">${e.date}</div>
-        <div class="entry-title">${title}</div>
-        ${preview ? `<div class="entry-preview">${preview}</div>` : ''}
-      </div>`;
-    }).join('') + '</div>';
-  }
-
-  if (book.id === 'daily') {
-    if (!data || data.length === 0) return '<div class="empty">还没有记录</div>';
-    return '<div class="entry-list">' + data.map((e, i) => {
-      const hasTitle = e.title && e.title.trim();
-      const displayTitle = hasTitle ? e.title : (e.detail ? e.detail.slice(0, 30) : '');
-      const preview = hasTitle && e.detail ? e.detail.replace(/\n/g, ' ').slice(0, 60) : '';
-      return `<div class="entry-item" onclick="openEntry(${i})">
-        <div class="entry-date">${e.date}</div>
-        <div class="entry-title">${displayTitle || '记录'}</div>
-        ${preview ? `<div class="entry-preview">${preview}</div>` : ''}
-      </div>`;
-    }).join('') + '</div>';
-  }
-
-  if (book.id === 'channels') {
-    if (!data || !data.channels || data.channels.length === 0) return '<div class="empty">还没有频道</div>';
-    return '<div class="entry-list">' + data.channels.map(name => `
-      <div class="channel-item" onclick="openChannel('${name}')">
-        <div class="channel-name">${name}</div>
+// 第一层：日期列表（日记 & 流水账）
+function renderDateList(book, grouped) {
+  if (!grouped || grouped.length === 0) return '<div class="empty">还没有记录</div>';
+  return '<div class="list">' + grouped.map(g => `
+    <div class="list-item" onclick="openDate('${g.date}')">
+      <div style="flex:1">
+        <div class="date-row">${g.date}</div>
+        <div class="date-sub">${g.entries.length} 条</div>
       </div>
-    `).join('') + '</div>';
-  }
-
-  return '';
+      <div class="arrow">›</div>
+    </div>
+  `).join('') + '</div>';
 }
 
-function renderContentHtml(text) {
-  const lines = text.split('\n');
-  let html = '';
-  for (const line of lines) {
-    if (line.trim() === '---') {
-      html += '<hr class="divider">';
-    } else if (/^[A-G][a-z0-9#b·\s·]+\d+/.test(line.trim()) && line.includes('·')) {
-      html += `<span class="chord">${escapeHtml(line)}</span>`;
-    } else {
-      const processed = line
-        .replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>')
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/<span class="strike">|<\/span>/g, m => m); // keep our tags
-      const safe = line
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>');
-      html += `<p>${safe || '&nbsp;'}</p>`;
-    }
-  }
-  return html;
+// 第二层（流水账）：某天的小标题列表
+function renderDayEntries(entries) {
+  if (!entries || entries.length === 0) return '<div class="empty">这天没有记录</div>';
+  return '<div class="list">' + entries.map((e, i) => {
+    const title = getTitle(e);
+    return `<div class="list-item" onclick="openEntry(${i})">
+      ${title
+        ? `<div class="entry-title-row">${esc(title)}</div>`
+        : `<div class="entry-title-no">（无标题）</div>`
+      }
+      <div class="arrow">›</div>
+    </div>`;
+  }).join('') + '</div>';
 }
 
-function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// 第三层（流水账详情）
+function renderDailyDetail(entry) {
+  const title = getTitle(entry);
+  const detail = entry.detail || '';
+  return `
+    <div class="detail-date">${entry.date}</div>
+    ${title ? `<div class="detail-title">${esc(title)}</div>` : ''}
+    <div class="detail-content">${renderContentSafe(detail)}</div>
+  `;
 }
 
-function renderContentSafe(text) {
-  const lines = text.split('\n');
-  let html = '';
-  for (const line of lines) {
-    if (line.trim() === '---') {
-      html += '<hr class="divider">';
-    } else if (/^[A-G][a-z0-9#b·\s·]+\d+/.test(line.trim()) && line.includes('·')) {
-      html += `<span class="chord">${escapeHtml(line)}</span>`;
-    } else {
-      const safe = escapeHtml(line).replace(/｜([^｜]+)｜/g, '<span class="strike">$1</span>');
-      html += `<p>${safe || '&nbsp;'}</p>`;
-    }
-  }
-  return html;
+// 日记第二层：内容
+function renderDiaryDetail(entry) {
+  const body = (entry.content || '').replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
+  return `
+    <div class="detail-date">${entry.date}</div>
+    <div class="detail-content">${renderContentSafe(body)}</div>
+  `;
 }
 
-function renderDetail(book, entry) {
-  if (book.id === 'diary') {
-    // 日记：日期 + 全部内容（去掉时间戳前缀行）
-    const body = entry.content.replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
-    return `
-      <div class="detail-date">${entry.date}</div>
-      <div class="detail-content">${renderContentSafe(body)}</div>
-    `;
-  }
-
-  if (book.id === 'daily') {
-    const hasTitle = entry.title && entry.title.trim();
-    if (hasTitle) {
-      // 有标题：日期 + 标题 + 内容
-      return `
-        <div class="detail-date">${entry.date}</div>
-        <div class="detail-title">${escapeHtml(entry.title)}</div>
-        <div class="detail-content">${renderContentSafe(entry.detail || '')}</div>
-      `;
-    } else {
-      // 无标题：日期 + 内容
-      const body = entry.raw ? entry.raw.replace(/^\[.*?\]\s*/, '') : (entry.detail || '');
-      return `
-        <div class="detail-date">${entry.date}</div>
-        <div class="detail-content">${renderContentSafe(body)}</div>
-      `;
-    }
-  }
-
-  return '';
+// 频道列表
+function renderChannelList(data) {
+  if (!data || !data.channels || data.channels.length === 0) return '<div class="empty">没有频道</div>';
+  return '<div class="list">' + data.channels.map(name => `
+    <div class="list-item" onclick="openChannel('${esc(name)}')">
+      <div class="entry-title-row">${esc(name)}</div>
+      <div class="arrow">›</div>
+    </div>
+  `).join('') + '</div>';
 }
+
+// ===== 路由 =====
 
 async function openBook(bookId) {
   const book = BOOKS.find(b => b.id === bookId);
-  state = { page: 'list', book, entry: null, data: null, channelName: null, channelContent: null };
+  state = { ...state, page: 'loading', book, selectedDate: null, selectedEntry: null };
   render();
 
-  try {
-    let data;
-    if (bookId === 'diary') {
-      const r = await fetch(`${API}/api/read?type=diary`);
-      data = await r.json();
-    } else if (bookId === 'daily') {
-      const r = await fetch(`${API}/api/read?type=daily`);
-      data = await r.json();
-    } else if (bookId === 'channels') {
-      const r = await fetch(`${API}/api/read?type=channels`);
-      data = await r.json();
+  if (!cache[bookId]) {
+    try {
+      let url = `${API}/api/read?type=${bookId}`;
+      const r = await fetch(url);
+      cache[bookId] = await r.json();
+    } catch (e) {
+      document.getElementById('app').innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
+      return;
     }
-    state.data = data;
-    render();
-  } catch (e) {
-    document.getElementById('app').innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
   }
+
+  if (bookId === 'channels') {
+    state.page = 'channel-list';
+  } else {
+    state.page = 'date-list';
+  }
+  render();
+}
+
+function openDate(date) {
+  state.selectedDate = date;
+  if (state.book.id === 'daily') {
+    state.page = 'day-entries';
+  } else {
+    // 日记只有一条，直接跳详情
+    const grouped = groupByDate(cache[state.book.id]);
+    const group = grouped.find(g => g.date === date);
+    if (group && group.entries.length === 1) {
+      state.selectedEntry = group.entries[0];
+      state.page = 'detail';
+    } else {
+      // 多条日记同一天（少见），也展示列表
+      state.page = 'day-entries';
+    }
+  }
+  render();
+  window.scrollTo(0, 0);
 }
 
 function openEntry(index) {
+  const grouped = groupByDate(cache[state.book.id]);
+  const group = grouped.find(g => g.date === state.selectedDate);
+  state.selectedEntry = group.entries[index];
   state.page = 'detail';
-  state.entry = state.data[index];
   render();
   window.scrollTo(0, 0);
 }
 
 async function openChannel(name) {
-  state.page = 'channel-detail';
   state.channelName = name;
   state.channelContent = null;
+  state.page = 'channel-detail';
   render();
   try {
     const r = await fetch(`${API}/api/read?type=channels&channel=${encodeURIComponent(name)}`);
@@ -467,53 +444,79 @@ async function openChannel(name) {
 }
 
 function goBack() {
-  if (state.page === 'detail' || state.page === 'channel-detail') {
-    state.page = 'list';
-    state.entry = null;
-    render();
+  const p = state.page;
+  if (p === 'detail') {
+    if (state.book.id === 'diary') {
+      state.page = 'date-list';
+    } else {
+      state.page = 'day-entries';
+    }
+  } else if (p === 'day-entries') {
+    state.page = 'date-list';
+  } else if (p === 'date-list' || p === 'channel-list') {
+    state.page = 'shelf';
+  } else if (p === 'channel-detail') {
+    state.page = 'channel-list';
   } else {
     state.page = 'shelf';
-    state.book = null;
-    state.data = null;
-    render();
   }
+  state.selectedEntry = null;
+  render();
+}
+
+// ===== 主渲染 =====
+
+function topbar(title) {
+  return `
+    <div class="topbar">
+      <button class="back-btn" onclick="goBack()">‹</button>
+      <div class="topbar-title">${esc(title)}</div>
+    </div>
+  `;
 }
 
 function render() {
   const app = document.getElementById('app');
+  const p = state.page;
 
-  if (state.page === 'shelf') {
-    app.innerHTML = renderShelf();
+  if (p === 'shelf') { app.innerHTML = renderShelf(); return; }
+
+  if (p === 'loading') {
+    app.innerHTML = topbar(state.book?.title || '') + '<div class="loading">加载中</div>';
     return;
   }
 
-  const title = state.page === 'channel-detail' ? state.channelName : (state.book?.title || '');
-  const topbar = `
-    <div class="topbar">
-      <button class="back-btn" onclick="goBack()">‹</button>
-      <div class="topbar-title">${escapeHtml(title)}</div>
-    </div>
-  `;
-
-  if (state.page === 'list') {
-    if (!state.data) {
-      app.innerHTML = topbar + '<div class="loading">加载中</div>';
-    } else {
-      app.innerHTML = topbar + renderList(state.book, state.data);
-    }
+  if (p === 'date-list') {
+    const grouped = groupByDate(cache[state.book.id] || []);
+    app.innerHTML = topbar(state.book.title) + renderDateList(state.book, grouped);
     return;
   }
 
-  if (state.page === 'detail') {
-    app.innerHTML = topbar + `<div class="detail-page">${renderDetail(state.book, state.entry)}</div>`;
+  if (p === 'day-entries') {
+    const grouped = groupByDate(cache[state.book.id] || []);
+    const group = grouped.find(g => g.date === state.selectedDate);
+    app.innerHTML = topbar(state.selectedDate) + renderDayEntries(group ? group.entries : []);
     return;
   }
 
-  if (state.page === 'channel-detail') {
+  if (p === 'detail') {
+    const content = state.book.id === 'diary'
+      ? renderDiaryDetail(state.selectedEntry)
+      : renderDailyDetail(state.selectedEntry);
+    app.innerHTML = topbar(state.selectedDate || '') + `<div class="detail-page">${content}</div>`;
+    return;
+  }
+
+  if (p === 'channel-list') {
+    app.innerHTML = topbar('频道') + renderChannelList(cache['channels']);
+    return;
+  }
+
+  if (p === 'channel-detail') {
     const content = state.channelContent !== null
       ? `<div class="detail-page"><div class="detail-content">${renderContentSafe(state.channelContent)}</div></div>`
       : '<div class="loading">加载中</div>';
-    app.innerHTML = topbar + content;
+    app.innerHTML = topbar(state.channelName || '') + content;
     return;
   }
 }
