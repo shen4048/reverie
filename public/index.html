@@ -391,13 +391,10 @@ function renderContentSafe(text) {
 
 function renderDetail(book, entry) {
   if (book.id === 'diary') {
-    const title = getDiaryTitle(entry.content);
-    const lines = entry.content.split('\n');
-    const titleIdx = lines.findIndex(l => l.trim() === title);
-    const body = lines.slice(titleIdx + 1).join('\n').replace(/^\n+/, '');
+    // 日记：日期 + 全部内容（去掉时间戳前缀行）
+    const body = entry.content.replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
     return `
       <div class="detail-date">${entry.date}</div>
-      <div class="detail-title">${escapeHtml(title)}</div>
       <div class="detail-content">${renderContentSafe(body)}</div>
     `;
   }
@@ -405,13 +402,14 @@ function renderDetail(book, entry) {
   if (book.id === 'daily') {
     const hasTitle = entry.title && entry.title.trim();
     if (hasTitle) {
+      // 有标题：日期 + 标题 + 内容
       return `
         <div class="detail-date">${entry.date}</div>
         <div class="detail-title">${escapeHtml(entry.title)}</div>
         <div class="detail-content">${renderContentSafe(entry.detail || '')}</div>
       `;
     } else {
-      // 早期没有标题，直接日期+内容
+      // 无标题：日期 + 内容
       const body = entry.raw ? entry.raw.replace(/^\[.*?\]\s*/, '') : (entry.detail || '');
       return `
         <div class="detail-date">${entry.date}</div>
