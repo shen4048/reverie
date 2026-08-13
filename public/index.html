@@ -23,7 +23,6 @@ body {
   background: #F0EBE3;
 }
 
-/* 顶部导航 */
 .topbar {
   padding: 20px 20px 12px;
   display: flex;
@@ -54,7 +53,6 @@ body {
   font-family: 'Noto Serif SC', serif;
 }
 
-/* 书架 */
 .shelf-header { padding: 32px 20px 20px; }
 
 .shelf-title {
@@ -70,7 +68,6 @@ body {
   margin-top: 4px;
 }
 
-/* 通用列表项 */
 .list { padding: 8px 0; }
 
 .list-item {
@@ -86,7 +83,6 @@ body {
 
 .list-item:active { background: #E8E1D8; }
 
-/* 书封面 */
 .book-cover {
   width: 64px;
   height: 82px;
@@ -123,7 +119,6 @@ body {
 .book-name { font-size: 17px; font-weight: 500; margin-bottom: 4px; font-family: 'Noto Serif SC', serif; }
 .book-desc { font-size: 13px; color: #8A7E75; }
 
-/* 日期行 */
 .date-row {
   font-size: 17px;
   font-family: 'Noto Serif SC', serif;
@@ -137,7 +132,6 @@ body {
   margin-top: 3px;
 }
 
-/* 标题行 */
 .entry-title-row {
   font-size: 15px;
   font-family: 'Noto Serif SC', serif;
@@ -153,10 +147,8 @@ body {
   flex: 1;
 }
 
-/* 箭头 */
 .arrow { color: #C4B8AE; font-size: 18px; flex-shrink: 0; }
 
-/* 详情页 */
 .detail-page { padding: 24px 20px 60px; }
 
 .detail-date {
@@ -199,7 +191,6 @@ body {
 
 .strike { text-decoration: line-through; color: #B0A098; }
 
-/* 加载/空 */
 .loading, .empty {
   padding: 60px 20px;
   text-align: center;
@@ -236,11 +227,11 @@ const BOOKS = [
   { id: 'channels',title: '频道',   subtitle: '约定与计划',       color: '#5E6B7B' },
 ];
 
-// 全量缓存
 const cache = {};
+const scrollHistory = {};
 
 let state = {
-  page: 'shelf',   // shelf | date-list | day-entries | detail | channel-list | channel-detail
+  page: 'shelf',
   book: null,
   selectedDate: null,
   selectedEntry: null,
@@ -248,10 +239,8 @@ let state = {
   channelContent: null,
 };
 
-// ===== 工具 =====
-
 function esc(s) {
-  return String(s)
+  return String(s || '')
     .replace(/&/g,'&amp;')
     .replace(/</g,'&lt;')
     .replace(/>/g,'&gt;');
@@ -273,20 +262,23 @@ function renderContentSafe(text) {
   return html;
 }
 
-// 从daily条目拿标题
-function getTitle(entry) {
-  return (entry.title || '').trim();
-}
-
-// 按日期分组
 function groupByDate(entries) {
   const map = {};
   for (const e of entries) {
     if (!map[e.date]) map[e.date] = [];
     map[e.date].push(e);
   }
-  // 返回日期从新到旧
   return Object.keys(map).sort((a,b) => b.localeCompare(a)).map(d => ({ date: d, entries: map[d] }));
+}
+
+function getDiaryFirstLine(content) {
+  const lines = (content || '').split('\n');
+  for (const line of lines) {
+    const t = line.trim();
+    if (!t || t.startsWith('[')) continue;
+    return t;
+  }
+  return '日记';
 }
 
 // ===== 渲染 =====
@@ -314,8 +306,7 @@ function renderShelf() {
   `;
 }
 
-// 第一层：日期列表（日记 & 流水账）
-function renderDateList(book, grouped) {
+function renderDateList(grouped) {
   if (!grouped || grouped.length === 0) return '<div class="empty">还没有记录</div>';
   return '<div class="list">' + grouped.map(g => `
     <div class="list-item" onclick="openDate('${g.date}')">
@@ -328,14 +319,18 @@ function renderDateList(book, grouped) {
   `).join('') + '</div>';
 }
 
-// 第二层（流水账）：某天的小标题列表
-function renderDayEntries(entries) {
+function renderDayEntries(bookId, entries) {
   if (!entries || entries.length === 0) return '<div class="empty">这天没有记录</div>';
   return '<div class="list">' + entries.map((e, i) => {
-    const title = getTitle(e);
+    let label;
+    if (bookId === 'diary') {
+      label = getDiaryFirstLine(e.content);
+    } else {
+      label = (e.title || '').trim();
+    }
     return `<div class="list-item" onclick="openEntry(${i})">
-      ${title
-        ? `<div class="entry-title-row">${esc(title)}</div>`
+      ${label
+        ? `<div class="entry-title-row">${esc(label)}</div>`
         : `<div class="entry-title-no">（无标题）</div>`
       }
       <div class="arrow">›</div>
@@ -343,18 +338,15 @@ function renderDayEntries(entries) {
   }).join('') + '</div>';
 }
 
-// 第三层（流水账详情）
 function renderDailyDetail(entry) {
-  const title = getTitle(entry);
-  const detail = entry.detail || '';
+  const title = (entry.title || '').trim();
   return `
     <div class="detail-date">${entry.date}</div>
     ${title ? `<div class="detail-title">${esc(title)}</div>` : ''}
-    <div class="detail-content">${renderContentSafe(detail)}</div>
+    <div class="detail-content">${renderContentSafe(entry.detail || '')}</div>
   `;
 }
 
-// 日记第二层：内容
 function renderDiaryDetail(entry) {
   const body = (entry.content || '').replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
   return `
@@ -363,11 +355,10 @@ function renderDiaryDetail(entry) {
   `;
 }
 
-// 频道列表
 function renderChannelList(data) {
   if (!data || !data.channels || data.channels.length === 0) return '<div class="empty">没有频道</div>';
   return '<div class="list">' + data.channels.map(name => `
-    <div class="list-item" onclick="openChannel('${esc(name)}')">
+    <div class="list-item" onclick="openChannel(\`${name}\`)">
       <div class="entry-title-row">${esc(name)}</div>
       <div class="arrow">›</div>
     </div>
@@ -376,6 +367,17 @@ function renderChannelList(data) {
 
 // ===== 路由 =====
 
+function saveScroll() {
+  const key = state.page + '|' + (state.selectedDate || '') + '|' + (state.book?.id || '') + '|' + (state.channelName || '');
+  scrollHistory[key] = window.scrollY;
+}
+
+function restoreScroll() {
+  const key = state.page + '|' + (state.selectedDate || '') + '|' + (state.book?.id || '') + '|' + (state.channelName || '');
+  const y = scrollHistory[key] || 0;
+  requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
 async function openBook(bookId) {
   const book = BOOKS.find(b => b.id === bookId);
   state = { ...state, page: 'loading', book, selectedDate: null, selectedEntry: null };
@@ -383,8 +385,7 @@ async function openBook(bookId) {
 
   if (!cache[bookId]) {
     try {
-      let url = `${API}/api/read?type=${bookId}`;
-      const r = await fetch(url);
+      const r = await fetch(`${API}/api/read?type=${bookId}`);
       cache[bookId] = await r.json();
     } catch (e) {
       document.getElementById('app').innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
@@ -392,44 +393,31 @@ async function openBook(bookId) {
     }
   }
 
-  if (bookId === 'channels') {
-    state.page = 'channel-list';
-  } else {
-    state.page = 'date-list';
-  }
+  state.page = bookId === 'channels' ? 'channel-list' : 'date-list';
   render();
+  restoreScroll();
 }
 
 function openDate(date) {
+  saveScroll();
   state.selectedDate = date;
-  if (state.book.id === 'daily') {
-    state.page = 'day-entries';
-  } else {
-    // 日记只有一条，直接跳详情
-    const grouped = groupByDate(cache[state.book.id]);
-    const group = grouped.find(g => g.date === date);
-    if (group && group.entries.length === 1) {
-      state.selectedEntry = group.entries[0];
-      state.page = 'detail';
-    } else {
-      // 多条日记同一天（少见），也展示列表
-      state.page = 'day-entries';
-    }
-  }
+  state.page = 'day-entries';
   render();
-  window.scrollTo(0, 0);
+  restoreScroll();
 }
 
 function openEntry(index) {
-  const grouped = groupByDate(cache[state.book.id]);
+  saveScroll();
+  const grouped = groupByDate(cache[state.book.id] || []);
   const group = grouped.find(g => g.date === state.selectedDate);
-  state.selectedEntry = group.entries[index];
+  state.selectedEntry = group ? group.entries[index] : null;
   state.page = 'detail';
   render();
   window.scrollTo(0, 0);
 }
 
 async function openChannel(name) {
+  saveScroll();
   state.channelName = name;
   state.channelContent = null;
   state.page = 'channel-detail';
@@ -444,24 +432,26 @@ async function openChannel(name) {
 }
 
 function goBack() {
+  saveScroll();
   const p = state.page;
   if (p === 'detail') {
-    if (state.book.id === 'diary') {
-      state.page = 'date-list';
-    } else {
-      state.page = 'day-entries';
-    }
+    state.page = 'day-entries';
+    state.selectedEntry = null;
   } else if (p === 'day-entries') {
     state.page = 'date-list';
+    state.selectedDate = null;
   } else if (p === 'date-list' || p === 'channel-list') {
     state.page = 'shelf';
+    state.book = null;
   } else if (p === 'channel-detail') {
     state.page = 'channel-list';
+    state.channelName = null;
+    state.channelContent = null;
   } else {
     state.page = 'shelf';
   }
-  state.selectedEntry = null;
   render();
+  restoreScroll();
 }
 
 // ===== 主渲染 =====
@@ -488,14 +478,14 @@ function render() {
 
   if (p === 'date-list') {
     const grouped = groupByDate(cache[state.book.id] || []);
-    app.innerHTML = topbar(state.book.title) + renderDateList(state.book, grouped);
+    app.innerHTML = topbar(state.book.title) + renderDateList(grouped);
     return;
   }
 
   if (p === 'day-entries') {
     const grouped = groupByDate(cache[state.book.id] || []);
     const group = grouped.find(g => g.date === state.selectedDate);
-    app.innerHTML = topbar(state.selectedDate) + renderDayEntries(group ? group.entries : []);
+    app.innerHTML = topbar(state.selectedDate || '') + renderDayEntries(state.book.id, group ? group.entries : []);
     return;
   }
 
