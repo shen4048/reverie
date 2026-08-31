@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>reverie · 沈克的记事本</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="reverie">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600&family=Noto+Sans+SC:wght@300;400&display=swap" rel="stylesheet">
 <style>
@@ -51,7 +54,28 @@ body {
   font-weight: 500;
   letter-spacing: 0.02em;
   font-family: 'Noto Serif SC', serif;
+  flex: 1;
 }
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-btn {
+  background: none;
+  border: 1px solid #C4B8AE;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6B5E52;
+  font-size: 13px;
+  padding: 4px 10px;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+
+.action-btn.danger { color: #B05040; border-color: #B05040; }
+.action-btn.primary { background: #6B5E52; color: #fff; border-color: #6B5E52; }
 
 .shelf-header { padding: 32px 20px 20px; }
 
@@ -118,6 +142,11 @@ body {
 .book-info { flex: 1; min-width: 0; }
 .book-name { font-size: 17px; font-weight: 500; margin-bottom: 4px; font-family: 'Noto Serif SC', serif; }
 .book-desc { font-size: 13px; color: #8A7E75; }
+.book-badge {
+  font-size: 11px;
+  color: #A09288;
+  margin-top: 2px;
+}
 
 .date-row {
   font-size: 17px;
@@ -175,6 +204,34 @@ body {
 
 .detail-content p { margin-bottom: 0.5em; min-height: 1em; }
 
+.edit-textarea {
+  width: 100%;
+  min-height: 320px;
+  background: #EAE4DB;
+  border: 1px solid #C4B8AE;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #1C1410;
+  font-family: 'Noto Serif SC', serif;
+  resize: vertical;
+  outline: none;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.edit-actions .action-btn {
+  flex: 1;
+  padding: 10px;
+  text-align: center;
+  font-size: 14px;
+}
+
 .chord {
   font-size: 11px;
   color: #A09288;
@@ -210,6 +267,24 @@ body {
   margin: 12px auto 0;
 }
 
+.toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(40,30,20,0.85);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 13px;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.toast.show { opacity: 1; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -217,14 +292,19 @@ body {
 <div class="app" id="app">
   <div class="loading">加载中</div>
 </div>
+<div class="toast" id="toast"></div>
 
 <script>
 const API = '';
 
 const BOOKS = [
-  { id: 'diary',    title: '日记',   subtitle: '想一想·消化情绪', color: '#6B7B6E' },
-  { id: 'daily',   title: '流水账', subtitle: '我们聊了什么',     color: '#7B6B5E' },
-  { id: 'channels',title: '频道',   subtitle: '约定与计划',       color: '#5E6B7B' },
+  { id: 'diary',    title: '日记',     subtitle: '想一想·消化情绪', color: '#6B7B6E', readonly: true },
+  { id: 'daily',   title: '流水账',   subtitle: '我们聊了什么',     color: '#7B6B5E', readonly: false },
+  { id: 'channels',title: '频道',     subtitle: '约定与计划',       color: '#5E6B7B', readonly: false },
+  { id: 'health',  title: '健康',     subtitle: '身体状态记录',     color: '#7B6E5E', readonly: true },
+  { id: 'transcript', title: '存档',  subtitle: '对话存档',         color: '#6E7B6B', readonly: true },
+  { id: 'core',    title: 'Core',     subtitle: '我是谁·说话风格',  color: '#5B5B6E', readonly: true },
+  { id: 'aboutKk', title: 'About 困困', subtitle: '困困是谁',       color: '#7B5E6B', readonly: true },
 ];
 
 const cache = {};
@@ -237,7 +317,18 @@ let state = {
   selectedEntry: null,
   channelName: null,
   channelContent: null,
+  editing: false,
 };
+
+let toastTimer = null;
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
 
 function esc(s) {
   return String(s || '')
@@ -298,6 +389,7 @@ function renderShelf() {
           <div class="book-info">
             <div class="book-name">${b.title}</div>
             <div class="book-desc">${b.subtitle}</div>
+            ${b.readonly ? '<div class="book-badge">只读</div>' : ''}
           </div>
           <div class="arrow">›</div>
         </div>
@@ -323,7 +415,7 @@ function renderDayEntries(bookId, entries) {
   if (!entries || entries.length === 0) return '<div class="empty">这天没有记录</div>';
   return '<div class="list">' + entries.map((e, i) => {
     let label;
-    if (bookId === 'diary') {
+    if (bookId === 'diary' || bookId === 'health') {
       label = getDiaryFirstLine(e.content);
     } else {
       label = (e.title || '').trim();
@@ -338,8 +430,19 @@ function renderDayEntries(bookId, entries) {
   }).join('') + '</div>';
 }
 
-function renderDailyDetail(entry) {
+function renderDailyDetail(entry, editing) {
   const title = (entry.title || '').trim();
+  if (editing) {
+    const fullContent = title + (entry.detail ? '\n---\n' + entry.detail : '');
+    return `
+      <div class="detail-date">${entry.date}</div>
+      <textarea class="edit-textarea" id="edit-content">${esc(fullContent)}</textarea>
+      <div class="edit-actions">
+        <button class="action-btn" onclick="cancelEdit()">取消</button>
+        <button class="action-btn primary" onclick="saveDaily()">保存</button>
+      </div>
+    `;
+  }
   return `
     <div class="detail-date">${entry.date}</div>
     ${title ? `<div class="detail-title">${esc(title)}</div>` : ''}
@@ -355,11 +458,48 @@ function renderDiaryDetail(entry) {
   `;
 }
 
+function renderHealthDetail(entry) {
+  const body = (entry.content || '').replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
+  return `
+    <div class="detail-date">${entry.date}</div>
+    <div class="detail-content">${renderContentSafe(body)}</div>
+  `;
+}
+
 function renderChannelList(data) {
   if (!data || !data.channels || data.channels.length === 0) return '<div class="empty">没有频道</div>';
   return '<div class="list">' + data.channels.map(name => `
     <div class="list-item" onclick="openChannel(\`${name}\`)">
       <div class="entry-title-row">${esc(name)}</div>
+      <div class="arrow">›</div>
+    </div>
+  `).join('') + '</div>';
+}
+
+function renderChannelDetail(editing) {
+  if (state.channelContent === null) return '<div class="loading">加载中</div>';
+  if (editing) {
+    return `
+      <div class="detail-page">
+        <textarea class="edit-textarea" id="edit-channel">${esc(state.channelContent)}</textarea>
+        <div class="edit-actions">
+          <button class="action-btn" onclick="cancelEdit()">取消</button>
+          <button class="action-btn primary" onclick="saveChannel()">保存</button>
+        </div>
+      </div>
+    `;
+  }
+  return `<div class="detail-page"><div class="detail-content">${renderContentSafe(state.channelContent)}</div></div>`;
+}
+
+function renderTranscriptList(data) {
+  if (!data || data.length === 0) return '<div class="empty">没有存档</div>';
+  return '<div class="list">' + data.map((t, i) => `
+    <div class="list-item" onclick="openTranscript(${i})">
+      <div style="flex:1">
+        <div class="entry-title-row">${esc(t.title)}</div>
+        <div class="date-sub">${t.date}</div>
+      </div>
       <div class="arrow">›</div>
     </div>
   `).join('') + '</div>';
@@ -380,22 +520,38 @@ function restoreScroll() {
 
 async function openBook(bookId) {
   const book = BOOKS.find(b => b.id === bookId);
-  state = { ...state, page: 'loading', book, selectedDate: null, selectedEntry: null };
+  state = { ...state, page: 'loading', book, selectedDate: null, selectedEntry: null, editing: false };
   render();
 
-  if (!cache[bookId]) {
-    try {
-      const r = await fetch(`${API}/api/read?type=${bookId}`);
-      cache[bookId] = await r.json();
-    } catch (e) {
-      document.getElementById('app').innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
+  try {
+    if (bookId === 'core' || bookId === 'aboutKk') {
+      if (!cache['core']) {
+        const r = await fetch(`${API}/api/read?type=core`);
+        cache['core'] = await r.json();
+      }
+      state.page = 'core-detail';
+      render();
       return;
     }
-  }
 
-  state.page = bookId === 'channels' ? 'channel-list' : 'date-list';
-  render();
-  restoreScroll();
+    if (!cache[bookId]) {
+      const apiType = bookId === 'aboutKk' ? 'core' : bookId;
+      const r = await fetch(`${API}/api/read?type=${apiType}`);
+      cache[bookId] = await r.json();
+    }
+
+    if (bookId === 'channels') {
+      state.page = 'channel-list';
+    } else if (bookId === 'transcript') {
+      state.page = 'transcript-list';
+    } else {
+      state.page = 'date-list';
+    }
+    render();
+    restoreScroll();
+  } catch (e) {
+    document.getElementById('app').innerHTML = `<div class="empty">加载失败：${e.message}</div>`;
+  }
 }
 
 function openDate(date) {
@@ -411,6 +567,7 @@ function openEntry(index) {
   const grouped = groupByDate(cache[state.book.id] || []);
   const group = grouped.find(g => g.date === state.selectedDate);
   state.selectedEntry = group ? group.entries[index] : null;
+  state.editing = false;
   state.page = 'detail';
   render();
   window.scrollTo(0, 0);
@@ -420,6 +577,7 @@ async function openChannel(name) {
   saveScroll();
   state.channelName = name;
   state.channelContent = null;
+  state.editing = false;
   state.page = 'channel-detail';
   render();
   try {
@@ -431,22 +589,107 @@ async function openChannel(name) {
   } catch (e) {}
 }
 
+function openTranscript(index) {
+  saveScroll();
+  state.selectedEntry = cache['transcript'][index];
+  state.page = 'transcript-detail';
+  render();
+  window.scrollTo(0, 0);
+}
+
+function startEdit() {
+  state.editing = true;
+  render();
+  window.scrollTo(0, 0);
+}
+
+function cancelEdit() {
+  state.editing = false;
+  render();
+}
+
+async function saveDaily() {
+  const content = document.getElementById('edit-content')?.value;
+  if (content === undefined) return;
+  try {
+    const r = await fetch(`${API}/api/write?type=daily`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: String(state.selectedEntry.id), content })
+    });
+    if (!r.ok) throw new Error('保存失败');
+    // 更新本地缓存
+    const parts = content.split('\n---\n');
+    const title = parts[0].trim();
+    const detail = parts.slice(1).join('\n---\n').trim();
+    state.selectedEntry = { ...state.selectedEntry, title, detail };
+    // 清除日期缓存，让下次重新拉取
+    delete cache['daily'];
+    state.editing = false;
+    showToast('已保存');
+    render();
+  } catch (e) {
+    showToast('保存失败：' + e.message);
+  }
+}
+
+async function saveChannel() {
+  const content = document.getElementById('edit-channel')?.value;
+  if (content === undefined) return;
+  try {
+    const r = await fetch(`${API}/api/write?type=channel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: state.channelName, content })
+    });
+    if (!r.ok) throw new Error('保存失败');
+    state.channelContent = content;
+    delete cache['channels'];
+    state.editing = false;
+    showToast('已保存');
+    render();
+  } catch (e) {
+    showToast('保存失败：' + e.message);
+  }
+}
+
+async function deleteChannel() {
+  if (!confirm(`确定删除频道「${state.channelName}」？不可恢复。`)) return;
+  try {
+    const r = await fetch(`${API}/api/write?type=delete_channel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: state.channelName })
+    });
+    if (!r.ok) throw new Error('删除失败');
+    delete cache['channels'];
+    showToast('已删除');
+    goBack();
+  } catch (e) {
+    showToast('删除失败：' + e.message);
+  }
+}
+
 function goBack() {
   saveScroll();
   const p = state.page;
+  if (state.editing) { state.editing = false; render(); return; }
   if (p === 'detail') {
     state.page = 'day-entries';
     state.selectedEntry = null;
   } else if (p === 'day-entries') {
     state.page = 'date-list';
     state.selectedDate = null;
-  } else if (p === 'date-list' || p === 'channel-list') {
+  } else if (p === 'date-list' || p === 'channel-list' || p === 'transcript-list' || p === 'core-detail') {
     state.page = 'shelf';
     state.book = null;
   } else if (p === 'channel-detail') {
     state.page = 'channel-list';
     state.channelName = null;
     state.channelContent = null;
+  } else if (p === 'transcript-detail') {
+    state.page = 'transcript-list';
+    state.selectedEntry = null;
   } else {
     state.page = 'shelf';
   }
@@ -456,11 +699,12 @@ function goBack() {
 
 // ===== 主渲染 =====
 
-function topbar(title) {
+function topbar(title, actions) {
   return `
     <div class="topbar">
       <button class="back-btn" onclick="goBack()">‹</button>
       <div class="topbar-title">${esc(title)}</div>
+      ${actions ? `<div class="topbar-actions">${actions}</div>` : ''}
     </div>
   `;
 }
@@ -468,32 +712,41 @@ function topbar(title) {
 function render() {
   const app = document.getElementById('app');
   const p = state.page;
+  const book = state.book;
 
   if (p === 'shelf') { app.innerHTML = renderShelf(); return; }
 
   if (p === 'loading') {
-    app.innerHTML = topbar(state.book?.title || '') + '<div class="loading">加载中</div>';
+    app.innerHTML = topbar(book?.title || '') + '<div class="loading">加载中</div>';
     return;
   }
 
   if (p === 'date-list') {
-    const grouped = groupByDate(cache[state.book.id] || []);
-    app.innerHTML = topbar(state.book.title) + renderDateList(grouped);
+    const grouped = groupByDate(cache[book.id] || []);
+    app.innerHTML = topbar(book.title) + renderDateList(grouped);
     return;
   }
 
   if (p === 'day-entries') {
-    const grouped = groupByDate(cache[state.book.id] || []);
+    const grouped = groupByDate(cache[book.id] || []);
     const group = grouped.find(g => g.date === state.selectedDate);
-    app.innerHTML = topbar(state.selectedDate || '') + renderDayEntries(state.book.id, group ? group.entries : []);
+    app.innerHTML = topbar(state.selectedDate || '') + renderDayEntries(book.id, group ? group.entries : []);
     return;
   }
 
   if (p === 'detail') {
-    const content = state.book.id === 'diary'
-      ? renderDiaryDetail(state.selectedEntry)
-      : renderDailyDetail(state.selectedEntry);
-    app.innerHTML = topbar(state.selectedDate || '') + `<div class="detail-page">${content}</div>`;
+    let content, actions = '';
+    if (book.id === 'diary') {
+      content = renderDiaryDetail(state.selectedEntry);
+    } else if (book.id === 'health') {
+      content = renderHealthDetail(state.selectedEntry);
+    } else {
+      if (!book.readonly && !state.editing) {
+        actions = `<button class="action-btn" onclick="startEdit()">编辑</button>`;
+      }
+      content = renderDailyDetail(state.selectedEntry, state.editing);
+    }
+    app.innerHTML = topbar(state.selectedDate || '', actions) + `<div class="detail-page">${content}</div>`;
     return;
   }
 
@@ -503,10 +756,39 @@ function render() {
   }
 
   if (p === 'channel-detail') {
-    const content = state.channelContent !== null
-      ? `<div class="detail-page"><div class="detail-content">${renderContentSafe(state.channelContent)}</div></div>`
-      : '<div class="loading">加载中</div>';
-    app.innerHTML = topbar(state.channelName || '') + content;
+    let actions = '';
+    if (state.channelContent !== null && !state.editing) {
+      actions = `
+        <button class="action-btn" onclick="startEdit()">编辑</button>
+        <button class="action-btn danger" onclick="deleteChannel()">删除</button>
+      `;
+    }
+    app.innerHTML = topbar(state.channelName || '', actions) + renderChannelDetail(state.editing);
+    return;
+  }
+
+  if (p === 'transcript-list') {
+    app.innerHTML = topbar('存档') + renderTranscriptList(cache['transcript'] || []);
+    return;
+  }
+
+  if (p === 'transcript-detail') {
+    const t = state.selectedEntry;
+    const content = t ? `
+      <div class="detail-date">${t.date}</div>
+      <div class="detail-title">${esc(t.title)}</div>
+      <div class="detail-content">${renderContentSafe(t.summary)}</div>
+      <hr class="divider" style="margin:24px 0">
+      <div class="detail-content">${renderContentSafe(t.content)}</div>
+    ` : '<div class="empty">找不到该存档</div>';
+    app.innerHTML = topbar(t?.title || '存档') + `<div class="detail-page">${content}</div>`;
+    return;
+  }
+
+  if (p === 'core-detail') {
+    const d = cache['core'] || {};
+    const which = book.id === 'aboutKk' ? d.aboutKk : d.core;
+    app.innerHTML = topbar(book.title) + `<div class="detail-page"><div class="detail-content">${renderContentSafe(which || '（空）')}</div></div>`;
     return;
   }
 }
