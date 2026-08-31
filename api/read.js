@@ -44,7 +44,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { type, limit, since, until, channel } = req.query;
+  const { type, limit, since, until, channel, id } = req.query;
 
   try {
     if (type === 'diary') {
@@ -90,7 +90,40 @@ export default async function handler(req, res) {
       return res.status(200).json({ core: core || '', aboutKk: aboutKk || '' });
     }
 
-    return res.status(400).json({ error: 'type参数必须是 diary/daily/channels/core' });
+    if (type === 'health') {
+      let entries = await mgetEntries('health');
+      if (since) entries = entries.filter(e => e.ts >= parseInt(since));
+      if (until) entries = entries.filter(e => e.ts <= parseInt(until));
+      entries.sort((a, b) => b.ts - a.ts);
+      const top = limit ? entries.slice(0, parseInt(limit)) : entries;
+      return res.status(200).json(top.map(e => ({
+        id: e.id,
+        date: fmtTime(e.ts).slice(0, 10),
+        content: e.content,
+      })));
+    }
+
+    if (type === 'transcript') {
+      if (id) {
+        const v = await redis.get(`reverie:transcript:${id}`);
+        if (!v) return res.status(404).json({ error: '找不到该存档' });
+        const r = typeof v === 'string' ? JSON.parse(v) : v;
+        return res.status(200).json({ id: r.ts, title: r.title, summary: r.summary, content: r.content, date: fmtTime(r.ts) });
+      }
+      const keys = await redis.keys('reverie:transcript:*');
+      if (!keys || keys.length === 0) return res.status(200).json([]);
+      const values = await redis.mget(...keys);
+      const transcripts = [];
+      for (const v of values) {
+        if (!v) continue;
+        const r = typeof v === 'string' ? JSON.parse(v) : v;
+        transcripts.push({ id: r.ts, title: r.title, summary: r.summary, date: fmtTime(r.ts) });
+      }
+      transcripts.sort((a, b) => b.id - a.id);
+      return res.status(200).json(transcripts);
+    }
+
+    return res.status(400).json({ error: 'type参数必须是 diary/daily/channels/core/health/transcript' });
   } catch (e) {
     return res.status(500).json({ error: e.message, stack: e.stack });
   }
