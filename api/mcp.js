@@ -76,6 +76,19 @@ const TOOLS = [
     }
   },
   {
+    name: 'patch_daily',
+    description: '局部更新某条 daily——替换其中一段，不需要全量覆盖。需要 id、match（要替换的原文片段）、content（新内容）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        match: { type: 'string' },
+        content: { type: 'string' }
+      },
+      required: ['id', 'match', 'content']
+    }
+  },
+  {
     name: 'read_daily',
     description: '读最近的 daily。默认 titles 模式只出标题,full 模式含细节。可用 since/until(时间戳 ms 或 YYYY-MM-DD) 按日期过滤。',
     inputSchema: {
@@ -140,6 +153,19 @@ const TOOLS = [
     }
   },
   {
+    name: 'patch_diary',
+    description: '局部更新某条日记——替换其中一段，不需要全量覆盖。需要 id、match（要替换的原文片段）、content（新内容）。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        match: { type: 'string' },
+        content: { type: 'string' }
+      },
+      required: ['id', 'match', 'content']
+    }
+  },
+  {
     name: 'update_writing',
     description: '更新某个写作项目的进度。整段替换该项目的记录。',
     inputSchema: {
@@ -200,6 +226,15 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: { channel: { type: 'string' } }
+    }
+  },
+  {
+    name: 'delete_channel',
+    description: '删除整个频道。不可恢复，谨慎操作。',
+    inputSchema: {
+      type: 'object',
+      properties: { channel: { type: 'string' } },
+      required: ['channel']
     }
   },
   {
@@ -291,18 +326,21 @@ async function callTool(name, args) {
     case 'add_daily': return await addDaily(requireStr(args.title, 'title'));
     case 'enrich_daily': return await enrichDaily(requireStr(args.id, 'id'), requireStr(args.detail, 'detail'));
     case 'update_daily': return await updateEntry('daily', requireStr(args.id, 'id'), requireStr(args.content, 'content'));
+    case 'patch_daily': return await patchEntry('daily', requireStr(args.id, 'id'), requireStr(args.match, 'match'), requireStr(args.content, 'content'));
     case 'read_daily': return await readDaily(args.limit || 15, args.mode || 'titles', args.since, args.until);
     case 'delete_daily': return await deleteEntry('daily', requireStr(args.id, 'id'));
     case 'write_diary': return await addTimed(K.diary, requireStr(args.content, 'content'), null, '日记已写');
     case 'read_diary': return await readTimed('diary', args.limit || 5, args.since, args.until);
     case 'delete_diary': return await deleteEntry('diary', requireStr(args.id, 'id'));
     case 'update_diary': return await updateEntry('diary', requireStr(args.id, 'id'), requireStr(args.content, 'content'));
+    case 'patch_diary': return await patchEntry('diary', requireStr(args.id, 'id'), requireStr(args.match, 'match'), requireStr(args.content, 'content'));
     case 'update_writing': return await setKey(K.writing(requireStr(args.project, 'project')), requireStr(args.content, 'content'), `writing/${args.project} 已更新`);
     case 'read_writing': return await readWriting(args.project);
     case 'add_health': return await addTimed(K.health, requireStr(args.entry, 'entry'), null, 'health 已记');
     case 'read_health': return await readTimed('health', args.limit || 7, args.since, args.until);
     case 'set_channel_state': return await setChannelPatch(requireStr(args.channel, 'channel'), args);
     case 'check_channel': return await checkChannel(args.channel);
+    case 'delete_channel': return await deleteChannel(requireStr(args.channel, 'channel'));
     case 'write_message': return await addTimed(K.message, requireStr(args.message, 'message'), null, '留言已写入留言板');
     case 'read_messages': return await readMessages();
     case 'save_transcript': return await saveTranscript(args);
@@ -409,7 +447,6 @@ async function readTimed(layer, limit, since, until) {
   return textResult(top.map(e => `[id:${e.id}]\n${e.content}`).join('\n\n---\n\n') || '(空)');
 }
 
-// daily 存储:"[时间] 标题\n---\n细节1\n---\n细节2..."
 async function addDaily(title) {
   const ts = now();
   const key = K.daily(ts);
@@ -458,6 +495,24 @@ async function updateEntry(layer, id, content) {
   const entry = `[${fmtTime(parseInt(id, 10))}] ${content}`;
   await redis.set(key, entry);
   return textResult(`已更新 ${layer} 条目 ${id}`);
+}
+
+async function patchEntry(layer, id, match, content) {
+  const key = `reverie:${layer}:${id}`;
+  const v = await redis.get(key);
+  if (!v) return textResult(`(找不到 id 为 ${id} 的条目)`);
+  if (!v.includes(match)) throw new Error(`找不到要替换的原文片段: ${match.slice(0, 40)}...`);
+  const merged = v.replace(match, content);
+  await redis.set(key, merged);
+  return textResult(`${layer} 条目 ${id} 已局部更新`);
+}
+
+async function deleteChannel(channel) {
+  const key = K.channel(channel);
+  const v = await redis.get(key);
+  if (!v) return textResult(`(频道 ${channel} 不存在)`);
+  await redis.del(key);
+  return textResult(`已删除频道 ${channel}`);
 }
 
 async function readWriting(project) {
@@ -601,7 +656,7 @@ export default async function handler(req, res) {
         result: {
           protocolVersion: '2024-11-05',
           capabilities: { tools: {} },
-          serverInfo: { name: 'reverie', version: '1.1.1' }
+          serverInfo: { name: 'reverie', version: '1.2.0' }
         }
       });
     }
