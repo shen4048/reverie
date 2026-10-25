@@ -329,7 +329,7 @@ const TOOLS = [
   },
   {
     name: 'search_memory',
-    description: '全文关键词搜索,跨 diary/daily/health/transcript/channel/core 多层。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
+    description: '全文关键词搜索,跨 diary/daily/health/transcript/channel/core 多层。keyword 可以放多个词,用空格或逗号隔开,命中任意一个就返回,命中词越多越靠前。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -682,6 +682,7 @@ async function searchMemory(keyword, layers) {
   const ALL = ['diary', 'daily', 'health', 'transcript', 'channel', 'core'];
   const targets = (layers && layers.length ? layers : ALL).filter(l => ALL.includes(l));
 
+  const terms = [...new Set(keyword.split(/[\s,，、]+/).filter(Boolean))];
   const hits = [];
 
   for (const layer of targets) {
@@ -706,12 +707,13 @@ async function searchMemory(keyword, layers) {
         }
       }
 
-      if (searchable.includes(keyword)) {
-        const idx = searchable.indexOf(keyword);
+      const matched = terms.filter(t => searchable.includes(t));
+      if (matched.length) {
+        const idx = searchable.indexOf(matched[0]);
         const start = Math.max(0, idx - 30);
         const end = Math.min(
           searchable.length,
-          idx + keyword.length + 30
+          idx + matched[0].length + 30
         );
 
         const snippet =
@@ -724,13 +726,14 @@ async function searchMemory(keyword, layers) {
           id: e.id,
           ts: e.ts,
           label: e.label,
+          score: matched.length,
           snippet
         });
       }
     }
   }
 
-  hits.sort((a, b) => b.ts - a.ts);
+  hits.sort((a, b) => b.score - a.score || b.ts - a.ts);
 
   if (hits.length === 0) {
     return textResult(`(没有找到匹配 "${keyword}" 的内容)`);
