@@ -1,4 +1,4 @@
-import { redis, K, now, fmtTime, setCors } from '../lib/reverie.js';
+import { redis, K, now, fmtTime, setCors, checkKey, deny } from '../lib/reverie.js';
 
 // ============ 工具定义 ============
 const TOOLS = [
@@ -758,6 +758,7 @@ export default async function handler(req, res) {
   setCors(res);
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+    if (!checkKey(req)) return deny(res);
 
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });

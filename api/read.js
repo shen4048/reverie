@@ -1,10 +1,6 @@
-import { redis, K, fmtTime } from '../lib/reverie.js';
+import { redis, K, fmtTime, setCors as baseCors, checkKey, deny } from '../lib/reverie.js';
 
-function setCors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+const setCors = (res) => baseCors(res, 'GET, OPTIONS');
 
 async function mgetEntries(layer) {
   const keys = await redis.keys(`reverie:${layer}:*`);
@@ -42,6 +38,7 @@ function parseDaily(content) {
 export default async function handler(req, res) {
   setCors(res);
   if (req.method === 'OPTIONS') return res.status(200).end();
+      if (!checkKey(req)) return deny(res);
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
   const { type, limit, since, until, channel, id } = req.query;
@@ -125,6 +122,6 @@ export default async function handler(req, res) {
 
     return res.status(400).json({ error: 'type参数必须是 diary/daily/channels/core/health/transcript' });
   } catch (e) {
-    return res.status(500).json({ error: e.message, stack: e.stack });
+      return res.status(500).json({ error: e.message });
   }
 }
