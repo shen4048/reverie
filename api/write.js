@@ -1,34 +1,6 @@
-import { redis, K, fmtTime, setCors as baseCors, checkKey, deny } from '../lib/reverie.js';
+import { redis, fmtTime, setCors as baseCors, checkKey, deny } from '../lib/reverie.js';
 
 const setCors = (res) => baseCors(res, 'POST, OPTIONS');
-
-function extractConventions(content) {
-  const conventions = [];
-  const regex = /【约定】([^\n【]*(?:\n(?!【)[^\n【]*)*)/g;
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    const text = match[1].trim();
-    if (text) conventions.push(`【约定】${text}`);
-  }
-  return conventions;
-}
-
-function isTemporary(text) {
-  return /今天|本次|这次|这轮|今晚|当天|当次|本轮/.test(text);
-}
-
-async function syncConventions(content) {
-  const conventions = extractConventions(content);
-  if (conventions.length === 0) return;
-  const core = conventions.filter(c => !isTemporary(c));
-  if (core.length === 0) return;
-  const channelKey = K.channel('约定');
-  const cur = (await redis.get(channelKey)) || '';
-  const toAdd = core.filter(c => !cur.includes(c));
-  if (toAdd.length === 0) return;
-  const merged = cur ? `${cur}\n\n${toAdd.join('\n\n')}` : toAdd.join('\n\n');
-  await redis.set(channelKey, merged);
-}
 
 export default async function handler(req, res) {
   setCors(res);
@@ -48,7 +20,6 @@ export default async function handler(req, res) {
       if (!v) return res.status(404).json({ error: '找不到该条目' });
       const entry = `[${fmtTime(parseInt(id, 10))}] ${content}`;
       await redis.set(key, entry);
-      await syncConventions(content);
       return res.status(200).json({ ok: true });
     }
 
