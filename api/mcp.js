@@ -1,7 +1,12 @@
-import { redis, K, now, fmtTime, setCors, checkKey, deny } from '../lib/reverie.js';
+import { redis, K, now, fmtTime, setCors, checkKey, deny, filterByTime, replaceOnce, mgetEntries } from '../lib/reverie.js';
 
 // ============ 工具定义 ============
 const TOOLS = [
+  {
+    name: 'briefing',
+    description: '新窗口启动时调这一个就够:一次返回 core、about_困困、memo、最近 4 天流水账全文、最近 7 天日记全文、按级别分组的频道列表、留言板未读数。不会清空留言板。',
+    inputSchema: { type: 'object', properties: {} }
+  },
   {
     name: 'set_core',
     description: '更新 core 层——我是谁、说话风格、规则。默认 replace 整段替换;mode=append 追加;mode=edit 替换某段(需要 match)。修改局部内容前先读取当前 core；如果直接提供完整替换内容则无需读取。',
@@ -17,7 +22,7 @@ const TOOLS = [
   },
   {
     name: 'read_core',
-    description: '读取当前完整 core。新窗口启动时必须先读取 core。',
+    description: '读取当前完整 core,末尾附字数。新窗口启动时必须先读取 core(或直接用 briefing)。',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -51,6 +56,15 @@ const TOOLS = [
     name: 'read_memo',
     description: '读取最新 4 条 memo，不删除。新窗口启动时必须读取；平时无需主动读取。',
     inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'delete_memo',
+    description: '删除一条 memo。index 是 read_memo 里的序号,1 是最新那条。',
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number' } },
+      required: ['index']
+    }
   },
   {
     name: 'add_daily',
@@ -217,6 +231,27 @@ const TOOLS = [
     }
   },
   {
+    name: 'delete_health',
+    description: '删除某条健康记录。需要 id。',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string' } },
+      required: ['id']
+    }
+  },
+  {
+    name: 'set_channel_level',
+    description: '设置频道的重要性级别,check_channel 列表和 briefing 会按级别分组。级别自由填,常用:重要 / 次要 / 普通 / 收到信再查。level 传空字符串就清掉级别。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        channel: { type: 'string' },
+        level: { type: 'string' }
+      },
+      required: ['channel', 'level']
+    }
+  },
+  {
     name: 'set_channel_state',
     description: '设置某个频道的上下文摘要。默认 replace;mode=append 追加;mode=edit 替换某段(需要 match)。',
     inputSchema: {
@@ -232,7 +267,7 @@ const TOOLS = [
   },
   {
     name: 'check_channel',
-    description: '查询频道内容。不传 channel 返回所有频道名列表;传了返回该频道完整内容。',
+    description: '查询频道内容。不传 channel 返回按级别分组的频道名列表;传了返回该频道完整内容。',
     inputSchema: {
       type: 'object',
       properties: { channel: { type: 'string' } }
@@ -294,7 +329,7 @@ const TOOLS = [
   },
   {
     name: 'search_memory',
-    description: '全文关键词搜索,跨 diary/daily/health/transcript 多层。用于回忆某件事、找旧内容。',
+    description: '全文关键词搜索,跨 diary/daily/health/transcript/channel/core 多层。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -302,7 +337,7 @@ const TOOLS = [
         layers: {
           type: 'array',
           items: { type: 'string' },
-          description: '限定搜索的层,不传搜全部。可选:diary/daily/health/transcript'
+          description: '限定搜索的层,不传搜全部。可选:diary/daily/health/transcript/channel/core(core 含 about_困困)'
         }
       },
       required: ['keyword']
@@ -318,23 +353,18 @@ function requireStr(val, name) {
   return val;
 }
 
-function parseTimeArg(v) {
-  if (!v) return null;
-  if (/^\d+$/.test(v)) return parseInt(v, 10);
-  const t = Date.parse(v);
-  if (isNaN(t)) throw new Error(`时间参数解析失败: ${v}`);
-  return t;
-}
 
 // ============ 工具实现路由 ============
 async function callTool(name, args) {
   switch (name) {
-    case 'read_core': return textResult((await redis.get(K.core)) || '(空)');
+    case 'briefing': return await briefing();
+    case 'read_core': return await readCore();
     case 'set_core': return await setKeyPatch(K.core, args, 'core');
     case 'read_about_kk': return textResult((await redis.get(K.aboutKk)) || '(空)');
     case 'set_about_kk': return await setKeyPatch(K.aboutKk, args, 'about_困困');
     case 'read_memo': return textResult((await redis.lrange(K.memo, 0, 3))?.join('\n\n---\n\n') || '(空)');
     case 'write_memo': return await writeMemo(requireStr(args.note, 'note'));
+    case 'delete_memo': return await deleteMemo(args.index);
     case 'add_daily': return await addDaily(requireStr(args.title, 'title'));
     case 'enrich_daily': return await enrichDaily(requireStr(args.id, 'id'), requireStr(args.detail, 'detail'));
     case 'update_daily': return await updateEntry('daily', requireStr(args.id, 'id'), requireStr(args.content, 'content'));
@@ -350,6 +380,8 @@ async function callTool(name, args) {
     case 'read_writing': return await readWriting(args.project);
     case 'add_health': return await addTimed(K.health, requireStr(args.entry, 'entry'), null, 'health 已记');
     case 'read_health': return await readTimed('health', args.limit || 7, args.since, args.until);
+    case 'delete_health': return await deleteEntry('health', requireStr(args.id, 'id'));
+    case 'set_channel_level': return await setChannelLevel(requireStr(args.channel, 'channel'), args.level);
     case 'set_channel_state': return await setChannelPatch(requireStr(args.channel, 'channel'), args);
     case 'check_channel': return await checkChannel(args.channel);
     case 'delete_channel': return await deleteChannel(requireStr(args.channel, 'channel'));
@@ -393,10 +425,7 @@ async function applyPatch(key, args, layerName) {
     const match = requireStr(args.match, 'match');
     const cur = await redis.get(key);
     if (!cur) throw new Error(`${layerName} 当前是空的,没法 edit`);
-    if (!cur.includes(match)) {
-      throw new Error(`${layerName} 里找不到要替换的原文片段:${match.slice(0, 40)}...`);
-    }
-    const merged = cur.replace(match, content);
+    const merged = replaceOnce(cur, match, content, `${layerName} 里`);
     await redis.set(key, merged);
     return `${layerName} 已替换某段`;
   }
@@ -435,34 +464,7 @@ async function addTimed(keyFn, content, ttl, msg) {
   return textResult(`${msg},id: ${ts}`);
 }
 
-async function mgetEntries(layer) {
-  const keys = await redis.keys(`reverie:${layer}:*`);
-  if (keys.length === 0) return [];
 
-  const values = await redis.mget(...keys);
-  const entries = [];
-
-  for (let i = 0; i < keys.length; i++) {
-    const v = values[i];
-    if (!v) continue;
-
-    const ts = parseInt(keys[i].split(':').pop(), 10);
-    entries.push({ ts, content: v, id: ts, key: keys[i] });
-  }
-
-  return entries;
-}
-
-function filterByTime(entries, since, until) {
-  const s = parseTimeArg(since);
-  const u = parseTimeArg(until);
-
-  return entries.filter(e => {
-    if (s !== null && e.ts < s) return false;
-    if (u !== null && e.ts > u) return false;
-    return true;
-  });
-}
 
 async function readTimed(layer, limit, since, until) {
   let entries = await mgetEntries(layer);
@@ -548,11 +550,7 @@ async function patchEntry(layer, id, match, content) {
 
   if (!v) return textResult(`(找不到 id 为 ${id} 的条目)`);
 
-  if (!v.includes(match)) {
-    throw new Error(`找不到要替换的原文片段: ${match.slice(0, 40)}...`);
-  }
-
-  const merged = v.replace(match, content);
+  const merged = replaceOnce(v, match, content);
   await redis.set(key, merged);
 
   return textResult(`${layer} 条目 ${id} 已局部更新`);
@@ -588,14 +586,7 @@ async function readWriting(project) {
 
 async function checkChannel(channel) {
   if (!channel) {
-    const keys = await redis.keys('reverie:channel:*');
-    const names = keys.map(k =>
-      decodeURIComponent(k.replace('reverie:channel:', ''))
-    );
-
-    return textResult(
-      names.length ? `频道列表:\n${names.join(', ')}` : '(没有频道)'
-    );
+    return textResult(await channelListText());
   }
 
   const v = await redis.get(K.channel(channel));
@@ -688,18 +679,16 @@ async function readTranscript(id) {
 }
 
 async function searchMemory(keyword, layers) {
-  const targets = (
-    layers && layers.length
-      ? layers
-      : ['diary', 'daily', 'health', 'transcript']
-  ).filter(l =>
-    ['diary', 'daily', 'health', 'transcript'].includes(l)
-  );
+  const ALL = ['diary', 'daily', 'health', 'transcript', 'channel', 'core'];
+  const targets = (layers && layers.length ? layers : ALL).filter(l => ALL.includes(l));
 
   const hits = [];
 
   for (const layer of targets) {
-    const entries = await mgetEntries(layer);
+    const entries =
+      layer === 'channel' ? await channelEntries()
+      : layer === 'core' ? await coreEntries()
+      : await mgetEntries(layer);
 
     for (const e of entries) {
       let searchable = e.content;
@@ -734,6 +723,7 @@ async function searchMemory(keyword, layers) {
           layer,
           id: e.id,
           ts: e.ts,
+          label: e.label,
           snippet
         });
       }
@@ -748,9 +738,121 @@ async function searchMemory(keyword, layers) {
 
   return textResult(
     hits.map(h =>
-      `[${h.layer}] [id:${h.id}] ${fmtTime(h.ts)}\n${h.snippet}`
+      (h.label
+        ? `[${h.layer}] ${h.label}\n${h.snippet}`
+        : `[${h.layer}] [id:${h.id}] ${fmtTime(h.ts)}\n${h.snippet}`)
     ).join('\n\n---\n\n')
   );
+}
+
+// ============ 第二批新增 ============
+async function readCore() {
+  const v = (await redis.get(K.core)) || '';
+  if (!v) return textResult('(空)');
+  return textResult(`${v}\n\n(core 共 ${[...v].length} 字)`);
+}
+
+async function deleteMemo(index) {
+  const i = Number(index);
+  if (!Number.isInteger(i) || i < 1 || i > 4) throw new Error('index 要填 1 到 4,1 是最新那条');
+  const cur = await redis.lindex(K.memo, i - 1);
+  if (cur === null || cur === undefined) return textResult(`(第 ${i} 条 memo 不存在)`);
+  const mark = `__deleted__${now()}`;
+  await redis.lset(K.memo, i - 1, mark);
+  await redis.lrem(K.memo, 1, mark);
+  return textResult(`已删除第 ${i} 条 memo:${String(cur).slice(0, 40)}...`);
+}
+
+async function setChannelLevel(channel, level) {
+  const exists = await redis.get(K.channel(channel));
+  if (!exists) return textResult(`(频道 ${channel} 不存在)`);
+  const lv = typeof level === 'string' ? level.trim() : '';
+  if (!lv) {
+    await redis.hdel(K.channelLevel, channel);
+    return textResult(`已清掉 ${channel} 的级别`);
+  }
+  await redis.hset(K.channelLevel, { [channel]: lv });
+  return textResult(`${channel} 级别已设为「${lv}」`);
+}
+
+async function channelNames() {
+  const keys = await redis.keys('reverie:channel:*');
+  return keys.map(k => decodeURIComponent(k.replace('reverie:channel:', '')));
+}
+
+const LEVEL_ORDER = ['重要', '次要', '普通', '收到信再查'];
+
+async function channelListText() {
+  const names = await channelNames();
+  if (names.length === 0) return '(没有频道)';
+  const levels = (await redis.hgetall(K.channelLevel)) || {};
+  const groups = {};
+  for (const n of names) {
+    const lv = levels[n] || '未分级';
+    (groups[lv] ||= []).push(n);
+  }
+  const order = [
+    ...LEVEL_ORDER.filter(l => groups[l]),
+    ...Object.keys(groups).filter(l => !LEVEL_ORDER.includes(l) && l !== '未分级').sort(),
+    ...(groups['未分级'] ? ['未分级'] : [])
+  ];
+  return '频道列表:\n' + order.map(l => `【${l}】${groups[l].sort().join(' / ')}`).join('\n');
+}
+
+async function channelEntries() {
+  const names = await channelNames();
+  if (names.length === 0) return [];
+  const values = await redis.mget(...names.map(n => K.channel(n)));
+  return names
+    .map((n, i) => ({ ts: 0, id: n, label: `「${n}」`, content: values[i] }))
+    .filter(e => typeof e.content === 'string' && e.content);
+}
+
+async function coreEntries() {
+  const [core, about] = await Promise.all([redis.get(K.core), redis.get(K.aboutKk)]);
+  return [
+    { ts: 0, id: 'core', label: 'core', content: core || '' },
+    { ts: 0, id: 'about_kk', label: 'about_困困', content: about || '' }
+  ].filter(e => e.content);
+}
+
+async function briefing() {
+  const DAY = 24 * 3600 * 1000;
+  const t = now();
+  const [core, about, memo, daily, diary, chText, msgKeys] = await Promise.all([
+    redis.get(K.core),
+    redis.get(K.aboutKk),
+    redis.lrange(K.memo, 0, 3),
+    mgetEntries('daily'),
+    mgetEntries('diary'),
+    channelListText(),
+    redis.keys('reverie:message:*')
+  ]);
+
+  const dailyFull = daily
+    .filter(e => e.ts >= t - 4 * DAY)
+    .sort((a, b) => b.ts - a.ts)
+    .map(e => `[id:${e.id}]\n${e.content}`)
+    .join('\n\n') || '(空)';
+
+  const diaryFull = diary
+    .filter(e => e.ts >= t - 7 * DAY)
+    .sort((a, b) => b.ts - a.ts)
+    .map(e => `[id:${e.id}]\n${e.content}`)
+    .join('\n\n---\n\n') || '(空)';
+
+  const memoText = (memo || []).map((m, i) => `${i + 1}. ${m}`).join('\n\n') || '(空)';
+
+  return textResult([
+    `===== 现在 =====\n北京时间 ${fmtTime(t)}`,
+    `===== core =====\n${core || '(空)'}`,
+    `===== about_困困 =====\n${about || '(空)'}`,
+    `===== memo(序号可用于 delete_memo)=====\n${memoText}`,
+    `===== 最近 4 天流水账 =====\n${dailyFull}`,
+    `===== 最近 7 天日记 =====\n${diaryFull}`,
+    `===== 频道 =====\n${chText.replace(/^频道列表:\n/, "")}`,
+    `===== 留言板 =====\n${msgKeys.length ? `有 ${msgKeys.length} 条未读,用 read_messages 读(读完会清空)` : '没有未读'}`
+  ].join('\n\n'));
 }
 
 // ============ MCP 协议处理 ============
@@ -777,7 +879,7 @@ export default async function handler(req, res) {
           capabilities: { tools: {} },
           serverInfo: {
             name: 'reverie',
-            version: '1.2.0'
+            version: '1.3.0'
           }
         }
       });
@@ -827,3 +929,4 @@ export default async function handler(req, res) {
     });
   }
 }
+

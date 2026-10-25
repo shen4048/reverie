@@ -1,23 +1,6 @@
-import { redis, K, fmtTime, setCors as baseCors, checkKey, deny } from '../lib/reverie.js';
+import { redis, K, fmtTime, setCors as baseCors, checkKey, deny, mgetEntries, filterByTime } from '../lib/reverie.js';
 
 const setCors = (res) => baseCors(res, 'GET, OPTIONS');
-
-async function mgetEntries(layer) {
-  const keys = await redis.keys(`reverie:${layer}:*`);
-  if (!keys || keys.length === 0) return [];
-  const values = await redis.mget(...keys);
-  const entries = [];
-  for (let i = 0; i < keys.length; i++) {
-    const v = values[i];
-    if (v === null || v === undefined) continue;
-    const parts = keys[i].split(':');
-    const ts = parseInt(parts[parts.length - 1], 10);
-    if (isNaN(ts)) continue;
-    const content = typeof v === 'string' ? v : JSON.stringify(v);
-    entries.push({ ts, content, id: ts });
-  }
-  return entries;
-}
 
 function parseDaily(content) {
   if (!content) return { title: '', detail: '' };
@@ -45,9 +28,7 @@ export default async function handler(req, res) {
 
   try {
     if (type === 'diary') {
-      let entries = await mgetEntries('diary');
-      if (since) entries = entries.filter(e => e.ts >= parseInt(since));
-      if (until) entries = entries.filter(e => e.ts <= parseInt(until));
+      let entries = filterByTime(await mgetEntries('diary'), since, until);
       entries.sort((a, b) => b.ts - a.ts);
       const top = limit ? entries.slice(0, parseInt(limit)) : entries;
       return res.status(200).json(top.map(e => ({
@@ -58,9 +39,7 @@ export default async function handler(req, res) {
     }
 
     if (type === 'daily') {
-      let entries = await mgetEntries('daily');
-      if (since) entries = entries.filter(e => e.ts >= parseInt(since));
-      if (until) entries = entries.filter(e => e.ts <= parseInt(until));
+      let entries = filterByTime(await mgetEntries('daily'), since, until);
       entries.sort((a, b) => b.ts - a.ts);
       const top = limit ? entries.slice(0, parseInt(limit)) : entries;
       return res.status(200).json(top.map(e => {
@@ -88,9 +67,7 @@ export default async function handler(req, res) {
     }
 
     if (type === 'health') {
-      let entries = await mgetEntries('health');
-      if (since) entries = entries.filter(e => e.ts >= parseInt(since));
-      if (until) entries = entries.filter(e => e.ts <= parseInt(until));
+      let entries = filterByTime(await mgetEntries('health'), since, until);
       entries.sort((a, b) => b.ts - a.ts);
       const top = limit ? entries.slice(0, parseInt(limit)) : entries;
       return res.status(200).json(top.map(e => ({
