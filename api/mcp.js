@@ -4,7 +4,7 @@ import { redis, K, now, fmtTime, setCors, checkKey, deny, filterByTime, replaceO
 const TOOLS = [
   {
     name: 'briefing',
-    description: '新窗口启动时调这一个就够:一次返回 core、about_困困、memo、最近 4 天流水账全文、最近 7 天日记全文、按级别分组的频道列表、留言板未读数。不会清空留言板。',
+    description: '新窗口启动时先调这一个看目录:只返回当前时间和全书目录(日记、流水账、频道、健康、存档、Core、About 困困、memo、留言板),不带正文。正文按需用 read_core、read_about_kk、read_memo、read_daily、read_diary、read_health、check_channel、read_transcript、read_messages 打开。',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -22,7 +22,7 @@ const TOOLS = [
   },
   {
     name: 'read_core',
-    description: '读取当前完整 core,末尾附字数。新窗口启动时必须先读取 core(或直接用 briefing)。',
+    description: '读取当前完整 core,末尾附字数。新窗口启动时先调 briefing 看目录,再读 core。',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -887,41 +887,10 @@ async function coreEntries() {
 }
 
 async function briefing() {
-  const DAY = 24 * 3600 * 1000;
   const t = now();
-  const [core, about, memo, daily, diary, chText, msgKeys] = await Promise.all([
-    redis.get(K.core),
-    redis.get(K.aboutKk),
-    redis.lrange(K.memo, 0, 3),
-    mgetEntries('daily'),
-    mgetEntries('diary'),
-    channelListText(),
-    redis.keys('reverie:message:*')
-  ]);
-
-  const dailyFull = daily
-    .filter(e => e.ts >= t - 4 * DAY)
-    .sort((a, b) => b.ts - a.ts)
-    .map(e => `[id:${e.id}]\n${e.content}`)
-    .join('\n\n') || '(空)';
-
-  const diaryFull = diary
-    .filter(e => e.ts >= t - 7 * DAY)
-    .sort((a, b) => b.ts - a.ts)
-    .map(e => `[id:${e.id}]\n${e.content}`)
-    .join('\n\n---\n\n') || '(空)';
-
-  const memoText = (memo || []).map((m, i) => `${i + 1}. ${m}`).join('\n\n') || '(空)';
-
   return textResult([
     `===== 现在 =====\n北京时间 ${fmtTime(t)}`,
-    `===== core =====\n${core || '(空)'}`,
-    `===== about_困困 =====\n${about || '(空)'}`,
-    `===== memo(序号可用于 delete_memo)=====\n${memoText}`,
-    `===== 最近 4 天流水账 =====\n${dailyFull}`,
-    `===== 最近 7 天日记 =====\n${diaryFull}`,
-    `===== 频道 =====\n${chText.replace(/^频道列表:\n/, "")}`,
-    `===== 留言板 =====\n${msgKeys.length ? `有 ${msgKeys.length} 条未读,用 read_messages 读(读完会清空)` : '没有未读'}`
+    `===== 目录 =====\n日记\n流水账\n频道\n健康\n存档\nCore\nAbout 困困\nmemo\n留言板\n(正文不在 briefing 里,按需打开:read_diary / read_daily / check_channel / read_health / read_transcript / read_core / read_about_kk / read_memo / read_messages)`
   ].join('\n\n'));
 }
 
