@@ -374,7 +374,7 @@ async function callTool(name, args) {
     case 'read_memo': return await readMemo();
     case 'write_memo': return await writeMemo(requireStr(args.note, 'note'));
     case 'delete_memo': return await deleteMemo(args.index);
-    case 'add_daily': return await addDaily(requireStr(args.title, 'title'), requireStr(args.detail, 'detail'));
+    case 'add_daily': return await addDaily(args);
     case 'enrich_daily': return await enrichDaily(requireStr(args.id, 'id'), requireStr(args.detail, 'detail'));
     case 'update_daily': return await updateDaily(requireStr(args.id, 'id'), requireStr(args.content, 'content'));
     case 'patch_daily': return await patchEntry('daily', requireStr(args.id, 'id'), requireStr(args.match, 'match'), requireStr(args.content, 'content'));
@@ -503,7 +503,22 @@ function dailyPreview(entry) {
   return `标题:${title}\n正文预览:\n${shown}\n(正文共 ${[...body].length} 字)`;
 }
 
-async function addDaily(title, detail) {
+async function addDaily(args) {
+  let title = typeof args.title === 'string' ? args.title : '';
+  let detail = typeof args.detail === 'string' ? args.detail : '';
+
+  // 旧窗口兼容:detail 没传、但 title 里自带「标题\n---\n正文」时拆开用。
+  if (!detail.trim() && title.includes('\n---\n')) {
+    const i = title.indexOf('\n---\n');
+    detail = title.slice(i + 5);
+    title = title.slice(0, i);
+  }
+
+  if (!title.trim()) throw new Error('参数 title 不能为空:add_daily 需要 title(标题)和 detail(正文)');
+  if (!detail.trim()) {
+    throw new Error('add_daily 已改版:现在必须同时传 title 和 detail 两个参数,detail 是这一段的正文,不能只传标题。请带上 detail 重新调用一次;后续同话题的新增细节用 enrich_daily 追加。');
+  }
+
   const content = normalizeDaily(`${title}\n---\n${detail}`);
   if (!dailyBody(content)) {
     throw new Error('daily 正文不能为空:add_daily 必须同时传 title 和 detail,detail 写这一段的正文');
