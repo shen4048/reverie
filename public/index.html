@@ -301,7 +301,6 @@ const BOOKS = [
   { id: 'diary',    title: '日记',     subtitle: '想一想·消化情绪', color: '#6B7B6E', readonly: true },
   { id: 'daily',   title: '流水账',   subtitle: '我们聊了什么',     color: '#7B6B5E', readonly: false },
   { id: 'channels',title: '频道',     subtitle: '约定与计划',       color: '#5E6B7B', readonly: false },
-  { id: 'health',  title: '健康',     subtitle: '身体状态记录',     color: '#7B6E5E', readonly: true },
   { id: 'transcript', title: '存档',  subtitle: '对话存档',         color: '#6E7B6B', readonly: true },
   { id: 'core',    title: 'Core',     subtitle: '我是谁·说话风格',  color: '#5B5B6E', readonly: true },
   { id: 'aboutKk', title: 'About 困困', subtitle: '困困是谁',       color: '#7B5E6B', readonly: true },
@@ -415,7 +414,7 @@ function renderDayEntries(bookId, entries) {
   if (!entries || entries.length === 0) return '<div class="empty">这天没有记录</div>';
   return '<div class="list">' + entries.map((e, i) => {
     let label;
-    if (bookId === 'diary' || bookId === 'health') {
+    if (bookId === 'diary') {
       label = getDiaryFirstLine(e.content);
     } else {
       label = (e.title || '').trim();
@@ -451,14 +450,6 @@ function renderDailyDetail(entry, editing) {
 }
 
 function renderDiaryDetail(entry) {
-  const body = (entry.content || '').replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
-  return `
-    <div class="detail-date">${entry.date}</div>
-    <div class="detail-content">${renderContentSafe(body)}</div>
-  `;
-}
-
-function renderHealthDetail(entry) {
   const body = (entry.content || '').replace(/^\[.*?\]\s*/, '').replace(/^\n+/, '');
   return `
     <div class="detail-date">${entry.date}</div>
@@ -738,8 +729,6 @@ function render() {
     let content, actions = '';
     if (book.id === 'diary') {
       content = renderDiaryDetail(state.selectedEntry);
-    } else if (book.id === 'health') {
-      content = renderHealthDetail(state.selectedEntry);
     } else {
       if (!book.readonly && !state.editing) {
         actions = `<button class="action-btn" onclick="startEdit()">编辑</button>`;
