@@ -1,4 +1,4 @@
-import { redis, K, now, fmtTime, setCors, checkKey, deny, filterByTime, replaceOnce, mgetEntries } from '../lib/reverie.js';
+import { redis, K, now, fmtTime, setCors, checkKey, deny, filterByTime, replaceOnce, mgetEntries, normalizeDaily, dailyBody } from '../lib/reverie.js';
 
 // ============ 工具定义 ============
 const TOOLS = [
@@ -68,11 +68,14 @@ const TOOLS = [
   },
   {
     name: 'add_daily',
-    description: '记一条流水账事件。这是"我们聊了什么"的索引,标题限 20 字以内的名词短语或"动词+对象",快速定位用,不写情绪不写细节。例:「修C盘」「讨论闹钟窗口机制」。规则:聊完一个小段就 add 一条,后续同话题的内容用 enrich_daily 追加,不要新开;混着聊多话题时就有多条并行开着。',
+    description: '记一条完整的流水账事件。title 按「时段｜核心内容」写 20 字以内的短语,detail 写这一段的正文;两者都必填,只有标题会被拒绝。后续同话题新增细节用 enrich_daily 追加,不要新开。',
     inputSchema: {
       type: 'object',
-      properties: { title: { type: 'string' } },
-      required: ['title']
+      properties: {
+        title: { type: 'string' },
+        detail: { type: 'string', description: '这一段的正文,写清经过' }
+      },
+      required: ['title', 'detail']
     }
   },
   {
@@ -89,7 +92,7 @@ const TOOLS = [
   },
   {
     name: 'update_daily',
-    description: '改错用。整条覆盖某条 daily 的完整内容。',
+    description: '改错用。整条覆盖某条 daily 的完整内容,content 必须包含标题和非空正文;系统会先自动归整无标题、【标题】与正文挤在一起这两种格式。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -114,10 +117,11 @@ const TOOLS = [
   },
   {
     name: 'read_daily',
-    description: '读取 daily。默认读最近 15 条；新窗口启动时必须读取完整内容，并自行决定查看最近约 3～4 天。使用 since/until 按日期范围读取时，不受默认 15 条限制。',
+    description: '读取 daily。默认读最近 15 条；新窗口启动时必须读取完整内容，并自行决定查看最近约 3～4 天。使用 since/until 按日期范围读取时，不受默认 15 条限制。传 id 时只返回该条全文。',
     inputSchema: {
       type: 'object',
       properties: {
+        id: { type: 'string', description: '只读某一条时传它的 id' },
         limit: { type: 'number' },
         mode: { type: 'string', enum: ['titles', 'full'] },
         since: { type: 'string' },
@@ -329,18 +333,18 @@ const TOOLS = [
   },
   {
     name: 'search_memory',
-    description: '全文关键词搜索,跨 diary/daily/health/transcript/channel/core 多层。keyword 可以放多个词,用空格或逗号隔开,命中任意一个就返回,命中词越多越靠前。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
+    description: '全文关键词搜索,跨 diary/daily/health/transcript/channel/core 多层。keyword 可以放多个词,用空格或逗号隔开,也可以传字符串数组;keywords 是它的别名,二选一。命中任意一个就返回,命中词越多越靠前。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
     inputSchema: {
       type: 'object',
       properties: {
-        keyword: { type: 'string' },
+        keyword: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
+        keywords: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] },
         layers: {
           type: 'array',
           items: { type: 'string' },
           description: '限定搜索的层,不传搜全部。可选:diary/daily/health/transcript/channel/core(core 含 about_困困)'
         }
-      },
-      required: ['keyword']
+      }
     }
   }
 ];
@@ -353,6 +357,11 @@ function requireStr(val, name) {
   return val;
 }
 
+function searchKeyword(args) {
+  const raw = args.keyword ?? args.keywords;
+  return requireStr(Array.isArray(raw) ? raw.join(' ') : raw, 'keyword');
+}
+
 
 // ============ 工具实现路由 ============
 async function callTool(name, args) {
@@ -362,14 +371,14 @@ async function callTool(name, args) {
     case 'set_core': return await setKeyPatch(K.core, args, 'core');
     case 'read_about_kk': return textResult((await redis.get(K.aboutKk)) || '(空)');
     case 'set_about_kk': return await setKeyPatch(K.aboutKk, args, 'about_困困');
-    case 'read_memo': return textResult((await redis.lrange(K.memo, 0, 3))?.join('\n\n---\n\n') || '(空)');
+    case 'read_memo': return await readMemo();
     case 'write_memo': return await writeMemo(requireStr(args.note, 'note'));
     case 'delete_memo': return await deleteMemo(args.index);
-    case 'add_daily': return await addDaily(requireStr(args.title, 'title'));
+    case 'add_daily': return await addDaily(requireStr(args.title, 'title'), requireStr(args.detail, 'detail'));
     case 'enrich_daily': return await enrichDaily(requireStr(args.id, 'id'), requireStr(args.detail, 'detail'));
-    case 'update_daily': return await updateEntry('daily', requireStr(args.id, 'id'), requireStr(args.content, 'content'));
+    case 'update_daily': return await updateDaily(requireStr(args.id, 'id'), requireStr(args.content, 'content'));
     case 'patch_daily': return await patchEntry('daily', requireStr(args.id, 'id'), requireStr(args.match, 'match'), requireStr(args.content, 'content'));
-    case 'read_daily': return await readDaily(args.limit || 15, args.mode || 'titles', args.since, args.until);
+    case 'read_daily': return await readDaily(args.limit || 15, args.mode || 'titles', args.since, args.until, args.id);
     case 'delete_daily': return await deleteEntry('daily', requireStr(args.id, 'id'));
     case 'write_diary': return await addTimed(K.diary, requireStr(args.content, 'content'), null, '日记已写');
     case 'read_diary': return await readTimed('diary', args.limit || 5, args.since, args.until);
@@ -390,7 +399,7 @@ async function callTool(name, args) {
     case 'save_transcript': return await saveTranscript(args);
     case 'search_transcript': return await searchTranscript(requireStr(args.keyword, 'keyword'));
     case 'read_transcript': return await readTranscript(requireStr(args.id, 'id'));
-    case 'search_memory': return await searchMemory(requireStr(args.keyword, 'keyword'), args.layers);
+    case 'search_memory': return await searchMemory(searchKeyword(args), args.layers);
     default: throw new Error(`Unknown tool: ${name}`);
   }
 }
@@ -443,6 +452,11 @@ async function setChannelPatch(channel, args) {
   return textResult(msg);
 }
 
+async function readMemo() {
+  const memo = (await redis.lrange(K.memo, 0, 3))?.join('\n\n---\n\n');
+  return textResult(memo ? `以下为 memo 内容:\n${memo}` : '(空)');
+}
+
 async function writeMemo(note) {
   const entry = `[${fmtTime(now())}] ${note}`;
   await redis.lpush(K.memo, entry);
@@ -478,14 +492,30 @@ async function readTimed(layer, limit, since, until) {
   );
 }
 
-async function addDaily(title) {
+function dailyPreview(entry) {
+  const content = entry.replace(/^\[.*?\]\s*/, '');
+  const sep = content.indexOf('\n---\n');
+  const title = (sep >= 0 ? content.slice(0, sep) : content).split('\n')[0];
+  const body = sep >= 0 ? content.slice(sep + 5) : content.split('\n').slice(1).join('\n');
+  const lines = body.split('\n');
+  const head = lines.slice(0, 3).join('\n');
+  const shown = [...head].length > 150 ? `${[...head].slice(0, 150).join('')}…` : head + (lines.length > 3 ? '\n…' : '');
+  return `标题:${title}\n正文预览:\n${shown}\n(正文共 ${[...body].length} 字)`;
+}
+
+async function addDaily(title, detail) {
+  const content = normalizeDaily(`${title}\n---\n${detail}`);
+  if (!dailyBody(content)) {
+    throw new Error('daily 正文不能为空:add_daily 必须同时传 title 和 detail,detail 写这一段的正文');
+  }
+
   const ts = now();
   const key = K.daily(ts);
-  const entry = `[${fmtTime(ts)}] ${title}`;
+  const entry = `[${fmtTime(ts)}] ${content}`;
 
   await redis.set(key, entry);
 
-  return textResult(`daily 已记,id: ${ts},标题:${title}`);
+  return textResult(`daily 已记,id: ${ts}\n${dailyPreview(entry)}`);
 }
 
 async function enrichDaily(id, detail) {
@@ -497,10 +527,15 @@ async function enrichDaily(id, detail) {
   const merged = `${cur}\n---\n${detail}`;
   await redis.set(key, merged);
 
-  return textResult(`daily ${id} 已追加细节`);
+  return textResult(`daily ${id} 已追加细节\n${dailyPreview(merged)}`);
 }
 
-async function readDaily(limit, mode, since, until) {
+async function readDaily(limit, mode, since, until, id) {
+  if (id) {
+    const v = await redis.get(K.daily(String(id)));
+    return textResult(v ? `[id:${id}]\n${v}` : `(找不到 id 为 ${id} 的 daily)`);
+  }
+
   let entries = await mgetEntries('daily');
   entries = filterByTime(entries, since, until);
   entries.sort((a, b) => b.ts - a.ts);
@@ -542,6 +577,23 @@ async function updateEntry(layer, id, content) {
   await redis.set(key, entry);
 
   return textResult(`已更新 ${layer} 条目 ${id}`);
+}
+
+async function updateDaily(id, rawContent) {
+  const key = K.daily(id);
+  const v = await redis.get(key);
+
+  if (!v) return textResult(`(找不到 id 为 ${id} 的条目)`);
+
+  const content = normalizeDaily(rawContent);
+  if (!dailyBody(content)) {
+    throw new Error('daily 正文不能为空:update_daily 的 content 必须包含标题和非空正文');
+  }
+
+  const entry = `[${fmtTime(parseInt(id, 10))}] ${content}`;
+  await redis.set(key, entry);
+
+  return textResult(`daily 条目 ${id} 已更新\n${dailyPreview(entry)}`);
 }
 
 async function patchEntry(layer, id, match, content) {
@@ -591,7 +643,7 @@ async function checkChannel(channel) {
 
   const v = await redis.get(K.channel(channel));
 
-  return textResult(v || `(${channel} 频道还没有内容)`);
+  return textResult(v ? `以下为「${channel}」频道内容:\n${v}` : `(${channel} 频道还没有内容)`);
 }
 
 async function readMessages() {
