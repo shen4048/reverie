@@ -66,17 +66,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ core: core || '', aboutKk: aboutKk || '' });
     }
 
-    if (type === 'health') {
-      let entries = filterByTime(await mgetEntries('health'), since, until);
-      entries.sort((a, b) => b.ts - a.ts);
-      const top = limit ? entries.slice(0, parseInt(limit)) : entries;
-      return res.status(200).json(top.map(e => ({
-        id: e.id,
-        date: fmtTime(e.ts).slice(0, 10),
-        content: e.content,
-      })));
-    }
-
     if (type === 'transcript') {
       if (id) {
         const v = await redis.get(`reverie:transcript:${id}`);
@@ -97,7 +86,7 @@ export default async function handler(req, res) {
       return res.status(200).json(transcripts);
     }
 
-    return res.status(400).json({ error: 'type参数必须是 diary/daily/channels/core/health/transcript' });
+    return res.status(400).json({ error: 'type参数必须是 diary/daily/channels/core/transcript' });
   } catch (e) {
       return res.status(500).json({ error: e.message });
   }

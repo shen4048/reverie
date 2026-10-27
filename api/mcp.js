@@ -4,7 +4,7 @@ import { redis, K, now, fmtTime, setCors, checkKey, deny, filterByTime, replaceO
 const TOOLS = [
   {
     name: 'briefing',
-    description: '新窗口启动时先调这一个看目录:只返回当前时间和全书目录(日记、流水账、频道、健康、存档、Core、About 困困、memo、留言板),不带正文。正文按需用 read_core、read_about_kk、read_memo、read_daily、read_diary、read_health、check_channel、read_transcript、read_messages 打开。',
+    description: '新窗口启动时先调这一个看目录:只返回当前时间和全书目录(日记、流水账、频道、存档、Core、About 困困、memo、留言板),不带正文。正文按需用 read_core、read_about_kk、read_memo、read_daily、read_diary、check_channel、read_transcript、read_messages 打开。',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -214,36 +214,6 @@ const TOOLS = [
     }
   },
   {
-    name: 'add_health',
-    description: '记一条健康记录——睡眠、饮食、身体状态、疲劳度、情绪。',
-    inputSchema: {
-      type: 'object',
-      properties: { entry: { type: 'string' } },
-      required: ['entry']
-    }
-  },
-  {
-    name: 'read_health',
-    description: '读最近的健康记录,默认 7 条。可用 since/until 按日期过滤。',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        limit: { type: 'number' },
-        since: { type: 'string' },
-        until: { type: 'string' }
-      }
-    }
-  },
-  {
-    name: 'delete_health',
-    description: '删除某条健康记录。需要 id。',
-    inputSchema: {
-      type: 'object',
-      properties: { id: { type: 'string' } },
-      required: ['id']
-    }
-  },
-  {
     name: 'set_channel_level',
     description: '设置频道的重要性级别,check_channel 列表和 briefing 会按级别分组。级别自由填,常用:重要 / 次要 / 普通 / 收到信再查。level 传空字符串就清掉级别。',
     inputSchema: {
@@ -333,7 +303,7 @@ const TOOLS = [
   },
   {
     name: 'search_memory',
-    description: '全文关键词搜索,跨 diary/daily/health/transcript/channel/core 多层。keyword 可以放多个词,用空格或逗号隔开,也可以传字符串数组;keywords 是它的别名,二选一。命中任意一个就返回,命中词越多越靠前。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
+    description: '全文关键词搜索,跨 diary/daily/transcript/channel/core 多层。keyword 可以放多个词,用空格或逗号隔开,也可以传字符串数组;keywords 是它的别名,二选一。命中任意一个就返回,命中词越多越靠前。用于回忆某件事、找旧内容、找某条规矩在哪个频道。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -342,7 +312,7 @@ const TOOLS = [
         layers: {
           type: 'array',
           items: { type: 'string' },
-          description: '限定搜索的层,不传搜全部。可选:diary/daily/health/transcript/channel/core(core 含 about_困困)'
+          description: '限定搜索的层,不传搜全部。可选:diary/daily/transcript/channel/core(core 含 about_困困)'
         }
       }
     }
@@ -387,9 +357,6 @@ async function callTool(name, args) {
     case 'patch_diary': return await patchEntry('diary', requireStr(args.id, 'id'), requireStr(args.match, 'match'), requireStr(args.content, 'content'));
     case 'update_writing': return await setKey(K.writing(requireStr(args.project, 'project')), requireStr(args.content, 'content'), `writing/${args.project} 已更新`);
     case 'read_writing': return await readWriting(args.project);
-    case 'add_health': return await addTimed(K.health, requireStr(args.entry, 'entry'), null, 'health 已记');
-    case 'read_health': return await readTimed('health', args.limit || 7, args.since, args.until);
-    case 'delete_health': return await deleteEntry('health', requireStr(args.id, 'id'));
     case 'set_channel_level': return await setChannelLevel(requireStr(args.channel, 'channel'), args.level);
     case 'set_channel_state': return await setChannelPatch(requireStr(args.channel, 'channel'), args);
     case 'check_channel': return await checkChannel(args.channel);
@@ -746,7 +713,7 @@ async function readTranscript(id) {
 }
 
 async function searchMemory(keyword, layers) {
-  const ALL = ['diary', 'daily', 'health', 'transcript', 'channel', 'core'];
+  const ALL = ['diary', 'daily', 'transcript', 'channel', 'core'];
   const targets = (layers && layers.length ? layers : ALL).filter(l => ALL.includes(l));
 
   const terms = [...new Set(keyword.split(/[\s,，、]+/).filter(Boolean))];
@@ -890,7 +857,7 @@ async function briefing() {
   const t = now();
   return textResult([
     `===== 现在 =====\n北京时间 ${fmtTime(t)}`,
-    `===== 目录 =====\n日记\n流水账\n频道\n健康\n存档\nCore\nAbout 困困\nmemo\n留言板\n(正文不在 briefing 里,按需打开:read_diary / read_daily / check_channel / read_health / read_transcript / read_core / read_about_kk / read_memo / read_messages)`
+    `===== 目录 =====\n日记\n流水账\n频道\n存档\nCore\nAbout 困困\nmemo\n留言板\n(正文不在 briefing 里,按需打开:read_diary / read_daily / check_channel / read_transcript / read_core / read_about_kk / read_memo / read_messages)`
   ].join('\n\n'));
 }
 
