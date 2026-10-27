@@ -1,4 +1,4 @@
-import { redis, fmtTime, setCors as baseCors, checkKey, deny } from '../lib/reverie.js';
+import { redis, fmtTime, setCors as baseCors, checkKey, deny, normalizeDaily, dailyBody } from '../lib/reverie.js';
 
 const setCors = (res) => baseCors(res, 'POST, OPTIONS');
 
@@ -14,13 +14,15 @@ export default async function handler(req, res) {
   try {
     if (type === 'daily') {
       const { id, content } = body;
-      if (!id || !content) return res.status(400).json({ error: 'id 和 content 必填' });
+      if (!id || typeof content !== 'string' || !content.trim()) return res.status(400).json({ error: 'id 和 content 必填' });
       const key = `reverie:daily:${id}`;
       const v = await redis.get(key);
       if (!v) return res.status(404).json({ error: '找不到该条目' });
-      const entry = `[${fmtTime(parseInt(id, 10))}] ${content}`;
+      const normalized = normalizeDaily(content);
+      if (!dailyBody(normalized)) return res.status(400).json({ error: 'daily 正文不能为空:内容必须包含标题和非空正文' });
+      const entry = `[${fmtTime(parseInt(id, 10))}] ${normalized}`;
       await redis.set(key, entry);
-      return res.status(200).json({ ok: true });
+      return res.status(200).json({ ok: true, content: normalized });
     }
 
     if (type === 'channel') {
