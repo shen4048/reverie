@@ -833,7 +833,8 @@ async function channelListText() {
     ...Object.keys(groups).filter(l => !LEVEL_ORDER.includes(l) && l !== '未分级').sort(),
     ...(groups['未分级'] ? ['未分级'] : [])
   ];
-  return '频道列表:\n' + order.map(l => `【${l}】${groups[l].sort().join(' / ')}`).join('\n');
+  return '频道列表:\n' + order.map(l => `【${l}】${groups[l].sort().join(' / ')}`).join('\n')
+    + '\n(以上只是名单。读某个频道的内容:再调 check_channel 并传 channel=频道名。)';
 }
 
 async function channelEntries() {
@@ -857,7 +858,7 @@ async function briefing() {
   const t = now();
   return textResult([
     `===== 现在 =====\n北京时间 ${fmtTime(t)}`,
-    `===== 目录 =====\n日记\n流水账\n频道\n存档\nCore\nAbout 困困\nmemo\n留言板\n(正文不在 briefing 里,按需打开:read_diary / read_daily / check_channel / read_transcript / read_core / read_about_kk / read_memo / read_messages)`
+    `===== 目录 =====\n日记\n流水账\n频道\n存档\nCore\nAbout 困困\nmemo\n留言板\n(正文不在 briefing 里,按需打开:read_diary / read_daily / check_channel / read_transcript / read_core / read_about_kk / read_memo / read_messages)\n(压缩后忘了怎么读:查频道用 check_channel 传 channel=频道名,其余按目录逐个打开。)`
   ].join('\n\n'));
 }
 
